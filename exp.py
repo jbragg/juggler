@@ -60,7 +60,7 @@ class ExpState(object):
 
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
-        return np.random.beta(2,10,self.num_workers)
+        return np.random.beta(2,4,self.num_workers)
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -122,7 +122,7 @@ class ExpState(object):
         self.reset()
         self.accuracies = []
         self.update_posteriors()
-        print self.posteriors
+        #print self.posteriors
         self.accuracies.append(self.score())
         while len(self.remaining_votes_list()) > 0:
             # select votes
@@ -158,13 +158,21 @@ class ExpState(object):
                 acc.append(max(evals, key=lambda k:evals[k]))
             elif policy == 'random':
                 acc.append(random.choice(candidates))
-            elif policy == 'rr':
+            elif policy == 'same_question':
                 q_in_acc = set(q for w,q in acc)
                 opts = [(w,q) for w,q in candidates if q in q_in_acc]
                 if opts:
                     acc.append(random.choice(opts))
                 else:
                     acc.append(random.choice(candidates))
+            elif policy == 'rr':
+                q_remaining = np.sum(self.observations == 0, 0)
+                for w,q in acc:
+                    q_remaining[q] -= 1
+                q_opt = set(q for w,q in candidates)
+                q_sel = max(q_opt, key=lambda x: q_remaining[x])
+                l = [(w,q) for w,q in candidates if q == q_sel]
+                acc.append(random.choice(l))
             else:
                 raise Exception('Undefined policy')
 
@@ -283,20 +291,20 @@ class ExpState(object):
                 post, ll = self.infer(self.observations,
                                       {'label': params['label'],
                                        'difficulties': self.gt_difficulties})
-
             else:
                 post, ll = self.infer(self.observations, params)
 
-            # add beta prior
+            # add beta prior for label parameter
             ll += np.sum(np.log(scipy.stats.beta.pdf(params['label'],
-                                                         self.prior[0],
-                                                         self.prior[1])))
+                                                 self.prior[0],
+                                                 self.prior[1])))
+
 
             return post, ll / self.num_questions
 
 
-        if self.known_difficulty:
-            def M(posteriors):
+        def M(posteriors):
+            if self.known_difficulty:
                 params = dict()
                 params['difficulties'] = self.gt_difficulties
                 params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
@@ -305,26 +313,34 @@ class ExpState(object):
 
                 return params
 
-        else:
-            def M(posteriors):
-                params_array = np.append(params['difficulties'],
-                                         params['label'])
+            else:
+                #params_array = np.append(params['difficulties'],
+                #                         params['label'])
+                params = dict()
+                params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
+                                  (self.prior[0] - 1 + self.prior[1] - 1 + \
+                                   self.num_questions)
+
 
                 def f(params_array):
                     difficulties = params_array[0:self.num_questions]
-                    prior = params_array[self.num_questions]
-                    probs = self.allprobs(self.gt_skills, difficulties)
-                    probs_dd = self.allprobs_ddifficulty(self.gt_skills,
-                                                         difficulties)
-                    priors = prior * np.ones(self.num_questions)
+                    probs = self.allprobs(
+                                        self.gt_skills,
+                                        difficulties)
+                    probs_dd = self.allprobs_ddifficulty(
+                                        self.gt_skills,
+                                        difficulties)
+#                    priors = prior * np.ones(self.num_questions)
 
                     true_votes = (self.observations == 1)   
                     false_votes = (self.observations == 2)   
 
-                    ptrue = np.log(priors) + \
+#                    ptrue = np.log(priors) + \
+                    ptrue = \
                             np.sum(np.log(probs) * true_votes, 0) + \
                             np.sum(np.log(1-probs) * false_votes, 0)
-                    pfalse = np.log(1-priors) + \
+#                    pfalse = np.log(1-priors) + \
+                    pfalse = \
                              np.sum(np.log(probs) * false_votes, 0) + \
                              np.sum(np.log(1-probs) * true_votes, 0)
 
@@ -341,33 +357,34 @@ class ExpState(object):
                     dd = np.array(posteriors * ptrue_dd + \
                                   (1-posteriors) * pfalse_dd)
 
-                    dd = np.append(dd, np.sum(posteriors * 1/priors + \
-                                              (1-posteriors) * 1/(1-priors)))
+                    #dd = np.append(dd, np.sum(posteriors * 1/priors + \
+                    #                          (1-posteriors) * -1/(1-priors)))
 
-                    print '---'
-                    print params_array
-                    print -v
+#                    print '---'
+#                    print params_array
+#                    print -v
 #                print dd
-                    print '---'
+#                    print '---'
 
                     # return negative to minimizer
-#                return (-v,
-#                       -dd)
-                    return -v
+                    return (-v,
+                            -dd)
+#                    return -v
 
 
                 res = scipy.optimize.minimize(
-                                        f,
-                                        0.5 * np.ones(self.num_questions + 1),
-                                        method='L-BFGS-B',
-                                        jac=False,
-                                        bounds=
-                                            [(0,1) for 
-                                             i in xrange(self.num_questions + 1)],
-                                        options={'disp':True})
+                            f,
+                            0.3 * np.ones(self.num_questions),
+                            method='L-BFGS-B',
+                            jac=True,
+                            bounds= [(0,1) for 
+                                     i in xrange(self.num_questions)],
+                            options={'disp':True})
 
-                return {'label': res.x[self.num_questions],
-                        'difficulties': res.x[0:self.num_questions]}
+                params['difficulties'] = res.x
+                return params
+#                return {'label': res.x[self.num_questions],
+#                        'difficulties': res.x[0:self.num_questions]}
 
         ll = float('-inf')
         ll_change = float('inf')
@@ -386,8 +403,9 @@ class ExpState(object):
 
             ll = ll_new
             # print 'll_change: ' + str(ll_change)
-            # print 'log likelihood: ' + str(ll)
-            assert ll_change > -0.001  # ensure ll is nondecreasing
+#            print 'log likelihood: ' + str(ll)
+#            print params['difficulties']
+            #assert ll_change > -0.001  # ensure ll is nondecreasing
             em_round += 1
 
         print str(em_round) + " EM rounds"
@@ -493,5 +511,9 @@ for p in policies:
 
 for p in policies:
     plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
+
+plt.ylim(ymax=1)
+
+plt.legend(loc="lower right")
 
 plt.savefig('res.png')
