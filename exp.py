@@ -6,7 +6,11 @@ import itertools
 from scipy.misc import logsumexp
 import scipy.optimize
 import scipy.stats
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
 import random
+
 
 NUM_WORKERS = 10
 NUM_QUESTIONS = 20
@@ -463,8 +467,13 @@ for i in xrange(NUM_EXPS):
             res[p] = np.vstack([res[p], new_state.run(p)])
 
 
+
+mean = dict()
+stderr = dict()
 for p in policies:
     assert res[p].shape[1] == NUM_QUESTIONS + 1
+    mean[p] = np.mean(res[p],0)
+    stderr[p] = np.std(res[p],0) / np.sqrt(res[p].shape[0])
     print
     print p + ':'
     print np.mean(res[p],0)
@@ -474,3 +483,8 @@ for p in policies:
 #print new_state.observations
 #print new_state.params
 #new_state.infer(new_state.observations, new_state.params)
+
+for p in policies:
+    plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
+
+plt.savefig('res.png')
