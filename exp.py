@@ -154,6 +154,13 @@ class ExpState(object):
                 acc.append(max(evals, key=lambda k:evals[k]))
             elif policy == 'random':
                 acc.append(random.choice(candidates))
+            elif policy == 'rr':
+                q_in_acc = set(q for w,q in acc)
+                opts = [(w,q) for w,q in candidates if q in q_in_acc]
+                if opts:
+                    acc.append(random.choice(opts))
+                else:
+                    acc.append(random.choice(candidates))
             else:
                 raise Exception('Undefined policy')
 
@@ -446,7 +453,7 @@ class ExpState(object):
 
 
 
-policies = ['random','greedy']
+policies = ['random','greedy','rr']
 
 
 NUM_EXPS = 25
