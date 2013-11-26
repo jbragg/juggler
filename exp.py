@@ -8,8 +8,8 @@ import scipy.optimize
 import scipy.stats
 import random
 
-NUM_WORKERS = 2
-NUM_QUESTIONS = 10
+NUM_WORKERS = 10
+NUM_QUESTIONS = 20
 
 
 
@@ -19,7 +19,7 @@ class ExpState(object):
         self.num_workers = num_workers
         self.known_difficulty = known_difficulty
         self.prior = (2,2) # assume Beta(2,2) prior
-        self.sample = True
+        self.sample = False
         self.reset()
 
         self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
@@ -43,6 +43,7 @@ class ExpState(object):
                                                 xrange(self.num_questions))])
         self.votes = []
         self.init_observations()
+        np.random.seed(seed=12643)
 
     def gen_labels(self):
         """generate labels from same distribution as prior"""
@@ -53,8 +54,9 @@ class ExpState(object):
 
         """
 
-        # BUG: workers distributed according to Beta(2,2)
-        return np.random.beta(2,2,self.num_workers)
+        # BUG: workers distributed according to Beta(2,20)
+        #  --- small gammma corresponds to good workers
+        return np.random.beta(2,10,self.num_workers)
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -82,10 +84,10 @@ class ExpState(object):
 
     def prob_correct(self, s, d):
         """p_correct = 1/2(1+(1-d_q)^(1/skill)"""
-        return 1/2*(1+np.power(1-d,1/s))
+        return 1/2*(1+np.power(1-d,s))
 
     def prob_correct_ddifficulty(self, s, d):
-        return -1/2*1/s*np.power(1-d,1/s-1)
+        return -1/2*s*np.power(1-d,s-1)
 
     def allprobs(self, skills, difficulties):
         """Return |workers| x |questions| matrix with prob of worker answering
@@ -112,11 +114,11 @@ class ExpState(object):
 
     ######### meta methods #########
 
-
     def run(self, policy):
         self.reset()
         self.accuracies = []
         self.update_posteriors()
+        print self.posteriors
         self.accuracies.append(self.score())
         while len(self.remaining_votes_list()) > 0:
             # select votes
@@ -133,6 +135,8 @@ class ExpState(object):
         print "accuracies: " + str(self.accuracies)
         print "**************"
         print
+
+        return self.accuracies
 
     def select_votes(self, policy):
         acc = []
@@ -213,9 +217,43 @@ class ExpState(object):
                 hXA += entropy(p) / N
             #print str(x) + ":" + str((hXA, epsilon))
         else:
-            # TODO: Implement exact conditional entropy
-            pass
-              
+            # exact conditional entropy
+            # chain rule H(X,A) - H(A)
+            # can compute locally for a question since worker skill known
+            hXA = 0
+            hA = 0
+
+            rel_q = x[1]
+            rel_acc = [(w,q) for w,q in acc if q == rel_q]
+#            newobs = np.copy(self.observations)
+            for tup in itertools.product(*([0,1] for
+                                           x in xrange(len(rel_acc)))):
+                pA1 = self.posteriors[rel_q]
+                pA0 = 1-self.posteriors[rel_q]
+
+                for ind,v in zip(rel_acc,tup):
+                    if v:
+                        pA1 *= self.probs[ind]
+                        pA0 *= (1-self.probs[ind])
+                    else:
+                        pA1 *= (1-self.probs[ind])
+                        pA0 *= self.probs[ind]
+
+                pA = pA1 + pA0
+                hA -= pA * np.log(pA)
+
+                pAX11 = pA1 * self.probs[x]
+                pAX01 = pA0 * (1-self.probs[x])
+                pAX1 = pAX11 + pAX01
+                hXA -= pAX1 * np.log(pAX1)
+
+                pAX10 = pA1 * (1-self.probs[x])
+                pAX00 = pA0 * self.probs[x]
+                pAX0 = pAX10 + pAX00
+                hXA -= pAX0 * np.log(pAX0)
+
+            hXA = hXA - hA
+
         return hXA - hXU
 
     ###### inference methods #######
@@ -408,10 +446,30 @@ class ExpState(object):
 
 
 
+policies = ['random','greedy']
 
-new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, True)
-new_state.run('greedy')
-new_state.run('random')
+
+NUM_EXPS = 25
+res = dict()
+for i in xrange(NUM_EXPS):
+    new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, True)
+    for p in policies:
+        if i == 0:
+            res[p] = new_state.run(p)
+#            print new_state.probs
+#            print new_state.gt_difficulties
+#            print new_state.gt_skills
+        else:
+            res[p] = np.vstack([res[p], new_state.run(p)])
+
+
+for p in policies:
+    assert res[p].shape[1] == NUM_QUESTIONS + 1
+    print
+    print p + ':'
+    print np.mean(res[p],0)
+
+
 #new_state.update_posteriors()
 #print new_state.observations
 #print new_state.params
