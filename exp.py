@@ -10,10 +10,13 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import random
-
+import pickle
+import datetime
+import sys
 
 NUM_WORKERS = 10
 NUM_QUESTIONS = 20
+NUM_EXPS = 80
 
 
 
@@ -47,7 +50,6 @@ class ExpState(object):
                                                 xrange(self.num_questions))])
         self.votes = []
         self.init_observations()
-        np.random.seed(seed=12643)
 
     def gen_labels(self):
         """generate labels from same distribution as prior"""
@@ -60,7 +62,7 @@ class ExpState(object):
 
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
-        return np.random.beta(2,4,self.num_workers)
+        return np.random.beta(2,4,self.num_workers) + 1
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -121,26 +123,41 @@ class ExpState(object):
     def run(self, policy):
         self.reset()
         self.accuracies = []
-        self.update_posteriors()
-        #print self.posteriors
-        self.accuracies.append(self.score())
+        posteriors = []
+        votes = []
+
+        def update():
+            self.update_posteriors()
+            self.accuracies.append(self.score())
+            posteriors.append(self.posteriors)
+
+        votes.append([])
+        update()
+
         while len(self.remaining_votes_list()) > 0:
             # select votes
             next_votes = self.select_votes(policy)
 
             # make observations and update
             self.observe(next_votes)
-            self.update_posteriors()
-            self.accuracies.append(self.score())
+            votes.append(next_votes)
+            update()
         
-        print
-        print "**************"
-        print "RESULTS for policy " + policy
-        print "accuracies: " + str(self.accuracies)
-        print "**************"
-        print
+#        print
+#        print "**************"
+#        print "RESULTS for policy " + policy
+#        print "accuracies: " + str(self.accuracies)
+#        print "**************"
+#        print
 
-        return self.accuracies
+        return {"votes": votes,
+                "belief": posteriors,
+                "accuracies": self.accuracies,
+                "gt_difficulties": self.gt_difficulties,
+                "gt_skills": self.gt_skills,
+                "gt_probs": self.gt_probs,
+                "gt_observations": self.gt_observations}
+
 
     def select_votes(self, policy):
         acc = []
@@ -153,7 +170,12 @@ class ExpState(object):
             #print "candidates: " + str(candidates)
             if policy == 'greedy':
                 for c in candidates:
-                    evals[c] = self.heur(acc, c)
+                    evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
+
+                acc.append(max(evals, key=lambda k:evals[k]))
+            elif policy == 'greedy_ent':
+                for c in candidates:
+                    evals[c] = self.hXA(acc, c)
 
                 acc.append(max(evals, key=lambda k:evals[k]))
             elif policy == 'random':
@@ -173,13 +195,21 @@ class ExpState(object):
                 q_sel = max(q_opt, key=lambda x: q_remaining[x])
                 l = [(w,q) for w,q in candidates if q == q_sel]
                 acc.append(random.choice(l))
+            elif policy == 'rr_mul':
+                q_remaining = np.sum(self.observations == 0, 0)
+                for w,q in acc:
+                    q_remaining[q] -= 1
+                q_opt = set(q for w,q in candidates)
+                q_sel = max(q_opt, key=lambda x: q_remaining[x])
+                l = [(w,q) for w,q in candidates if q == q_sel]
+                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
             else:
                 raise Exception('Undefined policy')
 
         return acc
 
     # compute H(X | U)
-    def heur(self, acc, x):
+    def hXU(self, acc, x):
         # remaining is a list of (#worker, #question) pairs
         # acc is a list of (#worker, #question) pairs that have been selected
 
@@ -196,6 +226,12 @@ class ExpState(object):
                     pFT * np.log(1-self.probs[x]) + \
                     pFF * np.log(self.probs[x]) + \
                     pTF * np.log(1-self.probs[x]))
+
+        return hXU
+
+    def hXA(self, acc, x):
+        # remaining is a list of (#worker, #question) pairs
+        # acc is a list of (#worker, #question) pairs that have been selected
 
 
         # compute P(X | A)
@@ -273,7 +309,7 @@ class ExpState(object):
 
             hXA = hXA - hA
 
-        return hXA - hXU
+        return hXA
 
     ###### inference methods #######
     
@@ -391,7 +427,7 @@ class ExpState(object):
         params = {'difficulties':np.random.random(self.num_questions),
                   'label':np.random.random()}
         em_round = 0
-        while ll_change > 0.01:  # run while ll increase is at least 1%
+        while ll_change > 0.001:  # run while ll increase is at least .1%
             # print 'EM round: ' + str(em_round)
             posteriors,ll_new = E(params)
             params = M(posteriors)
@@ -402,7 +438,8 @@ class ExpState(object):
                 ll_change = (ll_new - ll) / np.abs(ll) # percent increase
 
             ll = ll_new
-            # print 'll_change: ' + str(ll_change)
+#            print 'em_round: ' + str(em_round)
+#            print 'll_change: ' + str(ll_change)
 #            print 'log likelihood: ' + str(ll)
 #            print params['difficulties']
             #assert ll_change > -0.001  # ensure ll is nondecreasing
@@ -450,7 +487,7 @@ class ExpState(object):
             self.remaining_votes[w,q] = False
             self.votes.append((w,q))
 
-        print 'observing votes ' + str(votes)
+#        print 'observing votes ' + str(votes)
 
         return 
 
@@ -473,35 +510,63 @@ class ExpState(object):
         return "Observations:\n" + np.array_str(self.observations) + "\n" + \
                "Remaining:\n" + str(self.remaining_votes_list())
 
+class Result(object):
+    def __init__(self, res):
+        """hack: res is an object defined in run() above"""
+        self.res = res
+
+    def get_keys(self):
+        return self.res.keys()
+
+    def get_iteration_num(self):
+        return max([i for p,i in self.get_keys()]) + 1
+
+    def get_policies(self):
+        return set(p for p,i in self.get_keys())
+
+    def iterator(self, p):
+        """iterate through votes, beliefs for policy"""
+        it = itertools.chain.from_iterable(
+                (zip(self.res[p,i]['votes'],self.res[p,i]['belief']) for
+                 i in xrange(self.get_iteration_num())))
+        return it
 
 
-policies = ['random','greedy','rr']
+
+policies = ['random','greedy','greedy_ent','rr','rr_mul']
 
 
-NUM_EXPS = 25
-res = dict()
-for i in xrange(NUM_EXPS):
-    new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, True)
+if __name__ == '__main__':
+    accs = dict()
+    res = dict()
+    for i in xrange(NUM_EXPS):
+        rint = random.randint(0,sys.maxint)
+        print '------------'
+        print 'iteration: ' + str(i)
+        np.random.seed(rint)
+        new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, True)
+        for p in policies:
+            np.random.seed(rint)
+            r = new_state.run(p)
+            if i == 0:
+                accs[p] = r['accuracies']
+            else:
+                accs[p] = np.vstack([accs[p], r['accuracies']])
+
+            res[p,i] = r
+
+
+
+
+    mean = dict()
+    stderr = dict()
     for p in policies:
-        if i == 0:
-            res[p] = new_state.run(p)
-#            print new_state.probs
-#            print new_state.gt_difficulties
-#            print new_state.gt_skills
-        else:
-            res[p] = np.vstack([res[p], new_state.run(p)])
-
-
-
-mean = dict()
-stderr = dict()
-for p in policies:
-    assert res[p].shape[1] == NUM_QUESTIONS + 1
-    mean[p] = np.mean(res[p],0)
-    stderr[p] = np.std(res[p],0) / np.sqrt(res[p].shape[0])
-    print
-    print p + ':'
-    print np.mean(res[p],0)
+        assert accs[p].shape[1] == NUM_QUESTIONS + 1
+        mean[p] = np.mean(accs[p],0)
+        stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
+        print
+        print p + ':'
+        print np.mean(accs[p],0)
 
 
 #new_state.update_posteriors()
@@ -509,11 +574,12 @@ for p in policies:
 #print new_state.params
 #new_state.infer(new_state.observations, new_state.params)
 
-for p in policies:
-    plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
+    for p in policies:
+        plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
 
-plt.ylim(ymax=1)
+    plt.ylim(ymax=1)
+    plt.legend(loc="lower right")
+    plt.savefig('res.png')
 
-plt.legend(loc="lower right")
 
-plt.savefig('res.png')
+    pickle.dump(Result(res), open(str(datetime.datetime.now()) + '.txt','w'))
