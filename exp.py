@@ -15,8 +15,12 @@ import datetime
 import sys
 
 NUM_WORKERS = 10
-NUM_QUESTIONS = 20
-NUM_EXPS = 80
+NUM_QUESTIONS = 100
+NUM_EXPS = 40
+MAX_T = 20
+#policies = ['random','greedy','greedy_ent','rr','rr_mul']
+policies = ['random','greedy','rr']
+
 
 
 
@@ -62,7 +66,8 @@ class ExpState(object):
 
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
-        return np.random.beta(2,4,self.num_workers) + 1
+#        return np.random.beta(2,4,self.num_workers) + 1
+        return np.random.beta(2,4,self.num_workers) 
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -125,6 +130,8 @@ class ExpState(object):
         self.accuracies = []
         posteriors = []
         votes = []
+        
+        T = 0
 
         def update():
             self.update_posteriors()
@@ -134,7 +141,7 @@ class ExpState(object):
         votes.append([])
         update()
 
-        while len(self.remaining_votes_list()) > 0:
+        while len(self.remaining_votes_list()) > 0 and T < MAX_T:
             # select votes
             next_votes = self.select_votes(policy)
 
@@ -142,6 +149,8 @@ class ExpState(object):
             self.observe(next_votes)
             votes.append(next_votes)
             update()
+            
+            T += 1
         
 #        print
 #        print "**************"
@@ -446,6 +455,7 @@ class ExpState(object):
             em_round += 1
 
         print str(em_round) + " EM rounds"
+        print params['label']
         self.params = params
         self.posteriors = posteriors
 
@@ -533,7 +543,6 @@ class Result(object):
 
 
 
-policies = ['random','greedy','greedy_ent','rr','rr_mul']
 
 
 if __name__ == '__main__':
@@ -561,7 +570,7 @@ if __name__ == '__main__':
     mean = dict()
     stderr = dict()
     for p in policies:
-        assert accs[p].shape[1] == NUM_QUESTIONS + 1
+        #assert accs[p].shape[1] == NUM_QUESTIONS + 1
         mean[p] = np.mean(accs[p],0)
         stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
         print
@@ -579,7 +588,7 @@ if __name__ == '__main__':
 
     plt.ylim(ymax=1)
     plt.legend(loc="lower right")
-    plt.savefig('res.png')
+    plt.savefig('res4.png')
 
 
     pickle.dump(Result(res), open(str(datetime.datetime.now()) + '.txt','w'))
