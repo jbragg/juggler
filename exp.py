@@ -13,11 +13,13 @@ import random
 import pickle
 import datetime
 import sys
+from ut import dbeta
 
 NUM_WORKERS = 10
-NUM_QUESTIONS = 100
+NUM_QUESTIONS = 20
 NUM_EXPS = 40
 MAX_T = 20
+KNOWN_D = False
 #policies = ['random','greedy','greedy_ent','rr','rr_mul']
 policies = ['random','greedy','rr']
 
@@ -338,6 +340,10 @@ class ExpState(object):
                                        'difficulties': self.gt_difficulties})
             else:
                 post, ll = self.infer(self.observations, params)
+                ll += np.sum(np.log(scipy.stats.beta.pdf(params['difficulties'],
+                                                 self.prior[0],
+                                                 self.prior[1])))
+
 
             # add beta prior for label parameter
             ll += np.sum(np.log(scipy.stats.beta.pdf(params['label'],
@@ -380,6 +386,8 @@ class ExpState(object):
                     true_votes = (self.observations == 1)   
                     false_votes = (self.observations == 2)   
 
+
+
 #                    ptrue = np.log(priors) + \
                     ptrue = \
                             np.sum(np.log(probs) * true_votes, 0) + \
@@ -394,7 +402,7 @@ class ExpState(object):
                             np.sum(1/(1-probs)*(-probs_dd) * false_votes, 0)
 
                     pfalse_dd = \
-                            np.sum(1/(probs)*probs_dd * false_votes, 0) + \
+                            np.sum(1/probs*probs_dd * false_votes, 0) + \
                             np.sum(1/(1-probs)*(-probs_dd) * true_votes, 0)
 
                     # result
@@ -408,24 +416,38 @@ class ExpState(object):
 #                    print '---'
 #                    print params_array
 #                    print -v
+#                    print
+#                    print
+#                    print
 #                print dd
 #                    print '---'
+
+                    # TODO: FIX dV
+                    pr = scipy.stats.beta.pdf(difficulties,*self.prior)
+
+                    #                    print '************jjjjjj'
+                    v += np.sum(np.log(pr))
+                    dd += 1/pr * dbeta(difficulties,*self.prior)
+                    #print difficulties, -v, -dd
+
+                    
+
 
                     # return negative to minimizer
                     return (-v,
                             -dd)
-#                    return -v
+                    #                    return -v
 
 
                 res = scipy.optimize.minimize(
                             f,
-                            0.3 * np.ones(self.num_questions),
+                            0.1 * np.ones(self.num_questions),
                             method='L-BFGS-B',
                             jac=True,
-                            bounds= [(0,1) for 
+                            bounds= [(0.0000000001,0.9999999999) for 
                                      i in xrange(self.num_questions)],
-                            options={'disp':True})
-
+                            options={'disp':False})
+#                print res.x
                 params['difficulties'] = res.x
                 return params
 #                return {'label': res.x[self.num_questions],
@@ -437,7 +459,7 @@ class ExpState(object):
                   'label':np.random.random()}
         em_round = 0
         while ll_change > 0.001:  # run while ll increase is at least .1%
-            # print 'EM round: ' + str(em_round)
+#            print 'EM round: ' + str(em_round)
             posteriors,ll_new = E(params)
             params = M(posteriors)
 
@@ -451,11 +473,12 @@ class ExpState(object):
 #            print 'll_change: ' + str(ll_change)
 #            print 'log likelihood: ' + str(ll)
 #            print params['difficulties']
-            #assert ll_change > -0.001  # ensure ll is nondecreasing
+            assert ll_change > -0.001  # ensure ll is nondecreasing
             em_round += 1
 
-        print str(em_round) + " EM rounds"
-        print params['label']
+#        print str(em_round) + " EM rounds"
+#        print params['label']
+#        print params['difficulties']
         self.params = params
         self.posteriors = posteriors
 
@@ -553,7 +576,7 @@ if __name__ == '__main__':
         print '------------'
         print 'iteration: ' + str(i)
         np.random.seed(rint)
-        new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, True)
+        new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, KNOWN_D)
         for p in policies:
             np.random.seed(rint)
             r = new_state.run(p)
@@ -588,7 +611,7 @@ if __name__ == '__main__':
 
     plt.ylim(ymax=1)
     plt.legend(loc="lower right")
-    plt.savefig('res4.png')
+    plt.savefig('res.png')
 
 
     pickle.dump(Result(res), open(str(datetime.datetime.now()) + '.txt','w'))
