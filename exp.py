@@ -14,12 +14,13 @@ import pickle
 import datetime
 import sys
 from ut import dbeta
+import json
 
-NUM_WORKERS = 10
-NUM_QUESTIONS = 20
+NUM_WORKERS = 40
+NUM_QUESTIONS = 10
 NUM_EXPS = 40
 MAX_T = 20
-KNOWN_D = False
+KNOWN_D = True
 #policies = ['random','greedy','greedy_ent','rr','rr_mul']
 policies = ['random','greedy','rr']
 
@@ -77,8 +78,8 @@ class ExpState(object):
 
         """
 
-        # BUG: all problems equal difficulty
-        return np.ones(self.num_questions) / 2
+#        return np.ones(self.num_questions) / 2 # all problems equal difficulty
+        return np.random.beta(*self.prior,size=self.num_questions)
 
     def gen_observations(self):
         """Generate worker votes. Unvectorized, but shouldn't matter."""
@@ -132,6 +133,9 @@ class ExpState(object):
         self.accuracies = []
         posteriors = []
         votes = []
+
+        pr = PolicyRun(policy, self.gt_difficulties, self.gt_skills,
+                       self.prior, self.prior)
         
         T = 0
 
@@ -142,6 +146,9 @@ class ExpState(object):
 
         votes.append([])
         update()
+        pr.add_obs(dict(), self.score())
+
+
 
         while len(self.remaining_votes_list()) > 0 and T < MAX_T:
             # select votes
@@ -153,6 +160,16 @@ class ExpState(object):
             update()
             
             T += 1
+
+            pr.add_obs(dict([(i,int(self.gt_observations[i])) for
+                             i in next_votes]),
+                       self.score())
+
+        # hack: write json
+        #import os
+        #os.mkdir('js')  # bug: ensure directory exists
+        with open('js/' + policy + '.json', 'w') as f:
+            f.write(pr.to_json())
         
 #        print
 #        print "**************"
@@ -564,7 +581,44 @@ class Result(object):
                  i in xrange(self.get_iteration_num())))
         return it
 
+class PolicyRun(object):
+    def __init__(self, policy, difficulties, skills, priord, priorl):
+        self.policy = policy
+        self.difficulties = difficulties
+        self.skills = skills
+        self.priord = priord
+        self.priorl = priorl
+        self.num_questions = len(difficulties)
+        self.num_workers = len(skills)
+        self.obs = []
+        self.scores = []
 
+    def add_obs(self, e, s):
+        """e is a dictionary of type ((worker, question), value)
+           s is the score at that round 
+
+        """
+        self.obs.append((e,s))
+             
+
+    def to_json(self):
+        l = []
+        for i,(e,s) in enumerate(self.obs):
+            d = {'score':s, 'votes':[]}
+#            print e
+            for (w,q),v in e.iteritems():
+                d['votes'].append({'round': i,
+                                   'worker':w,
+                                   'question':q,
+                                   'vote':v})
+            l.append(d)
+
+        j = {'iters': l,
+             'difficulties': self.difficulties.tolist(),
+             'skills': self.skills.tolist()}
+
+        return json.dumps(j)
+        
 
 
 
@@ -577,6 +631,7 @@ if __name__ == '__main__':
         print 'iteration: ' + str(i)
         np.random.seed(rint)
         new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, KNOWN_D)
+        print new_state.gt_difficulties
         for p in policies:
             np.random.seed(rint)
             r = new_state.run(p)
@@ -611,7 +666,9 @@ if __name__ == '__main__':
 
     plt.ylim(ymax=1)
     plt.legend(loc="lower right")
-    plt.savefig('res.png')
+    with open('res2.png','wb') as f:
+        plt.savefig(f, format="png", dpi=150)
+
 
 
     pickle.dump(Result(res), open(str(datetime.datetime.now()) + '.txt','w'))
