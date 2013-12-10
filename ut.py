@@ -1,5 +1,10 @@
+#--------------------------#
+#  Statistics              #
+#--------------------------#
+
 from scipy.special import gamma
 from scipy.stats import beta
+
 
 beta = beta.pdf
 
@@ -13,3 +18,12 @@ def dbeta(x, a, b):
 
 assert dbeta(0.5, 2, 2) == 0
 assert dbeta(0.6, 2, 2) != 0
+
+
+
+#--------------------------#
+#  General                 #
+#--------------------------#
+
+
+

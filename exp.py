@@ -16,14 +16,15 @@ import sys
 from ut import dbeta
 import json
 
-NUM_WORKERS = 40
-NUM_QUESTIONS = 10
-NUM_EXPS = 40
+NUM_WORKERS = 10
+NUM_QUESTIONS = 40
+NUM_EXPS = 20
 MAX_T = 20
 KNOWN_D = True
+SAMPLE = True
+LAZY = True
 #policies = ['random','greedy','greedy_ent','rr','rr_mul']
-policies = ['random','greedy','rr']
-
+policies = ['random','greedy','greedy_skill','rr']
 
 
 
@@ -33,7 +34,7 @@ class ExpState(object):
         self.num_workers = num_workers
         self.known_difficulty = known_difficulty
         self.prior = (2,2) # assume Beta(2,2) prior
-        self.sample = False
+        self.sample = SAMPLE
         self.reset()
 
         self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
@@ -57,6 +58,7 @@ class ExpState(object):
                                                 xrange(self.num_questions))])
         self.votes = []
         self.init_observations()
+        self.heuristic_vals = dict()
 
     def gen_labels(self):
         """generate labels from same distribution as prior"""
@@ -70,7 +72,7 @@ class ExpState(object):
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
 #        return np.random.beta(2,4,self.num_workers) + 1
-        return np.random.beta(2,4,self.num_workers) 
+        return np.random.beta(2,4,self.num_workers) + 1
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -129,13 +131,14 @@ class ExpState(object):
     ######### meta methods #########
 
     def run(self, policy):
+        print 'Policy: {}'.format(policy)
         self.reset()
         self.accuracies = []
         posteriors = []
         votes = []
 
         pr = PolicyRun(policy, self.gt_difficulties, self.gt_skills,
-                       self.prior, self.prior)
+                       self.prior, self.prior, self.gt_labels.tolist())
         
         T = 0
 
@@ -146,11 +149,13 @@ class ExpState(object):
 
         votes.append([])
         update()
-        pr.add_obs(dict(), self.score())
+        pr.add_obs(dict(), self.posteriors.tolist(), self.score())
 
 
 
         while len(self.remaining_votes_list()) > 0 and T < MAX_T:
+            print "Remaining votes: " + str(len(self.remaining_votes_list()))
+
             # select votes
             next_votes = self.select_votes(policy)
 
@@ -163,13 +168,29 @@ class ExpState(object):
 
             pr.add_obs(dict([(i,int(self.gt_observations[i])) for
                              i in next_votes]),
+                       self.posteriors.tolist(),
                        self.score())
 
         # hack: write json
         #import os
         #os.mkdir('js')  # bug: ensure directory exists
-        with open('js/' + policy + '.json', 'w') as f:
+        with open('js/' + policy + \
+                          str(NUM_WORKERS) + 'w' + \
+                          str(NUM_QUESTIONS) + 'q' + \
+                  '.json', 'w') as f:
             f.write(pr.to_json())
+
+        with open('js/{}{}w{}q.beliefs.csv'.format(policy,
+                                               NUM_WORKERS,
+                                               NUM_QUESTIONS),'w') as f:
+            np.savetxt(f, np.vstack(posteriors), fmt='%.02f', delimiter=',')
+
+        with open('js/{}{}w{}q.gt.csv'.format(policy,
+                                          NUM_WORKERS,
+                                          NUM_QUESTIONS),'w') as f:
+            np.savetxt(f, self.gt_labels[None], fmt='%d', delimiter=',')
+
+                            
         
 #        print
 #        print "**************"
@@ -189,19 +210,51 @@ class ExpState(object):
 
     def select_votes(self, policy):
         acc = []
+        num_skipped = 0
         while len(acc) < min(self.num_workers, self.remaining_votes_list()):
             evals = {}
             workers_in_acc = [x[0] for x in acc]
             candidates = [i for i in self.remaining_votes if 
                           self.remaining_votes[i] and
                           i[0] not in workers_in_acc]
-            #print "candidates: " + str(candidates)
-            if policy == 'greedy':
-                for c in candidates:
-                    evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
+            if policy == 'greedy_skill':
+                min_w,_ = max(candidates, key=lambda x: self.gt_skills[x[0]])
+                candidates = [c for c in candidates if c[0] == min_w]
 
-                acc.append(max(evals, key=lambda k:evals[k]))
+            #print "candidates: " + str(candidates)
+            if policy == 'greedy' or policy == 'greedy_skill':
+                # BUG: force greedy_skill policy to be non-lazy
+                if LAZY and not policy == 'greedy_skill':  # force g
+                    # BUG: no priority queue for after first vote
+
+                    cur_max = float('-inf')
+                    cur_max_c = None
+                    if len(self.heuristic_vals) > 0:
+                        candidates.sort(key=lambda k: self.heuristic_vals[k],
+                                        reverse=True)
+                    for c in candidates:
+                        # only update if previous eval was at least as large as best
+                        if ((c in self.heuristic_vals and 
+                             self.heuristic_vals[c] > cur_max) or
+                            c not in self.heuristic_vals) :
+
+                            v = self.hXA(acc, c) - self.hXU(acc, c)
+                            if v > cur_max:
+                                cur_max,cur_max_c = v,c
+                            if len(acc) == 0: # only update for first in batch
+                                self.heuristic_vals[c] = v
+                        else:
+                            num_skipped += 1
+
+                    acc.append(cur_max_c)
+                else:
+                    for c in candidates:
+                        evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
+                        
+                    acc.append(max(evals, key=lambda k:evals[k]))
+
             elif policy == 'greedy_ent':
+                # BUG: doesn't use lazy eval 
                 for c in candidates:
                     evals[c] = self.hXA(acc, c)
 
@@ -234,6 +287,7 @@ class ExpState(object):
             else:
                 raise Exception('Undefined policy')
 
+#        print "Lazy evaluations saved: {}".format(num_skipped)
         return acc
 
     # compute H(X | U)
@@ -265,11 +319,20 @@ class ExpState(object):
         # compute P(X | A)
         # sample
         if self.sample:
+
+            def calc_samples(epsilon, delta, domain_size=2):
+                """Calculate number of samples, for error epsilon,
+                confidence delta. From "Near-Optimal Nonmyopic Value of
+                Information in Graphical Models".
+
+                """
+                return int(np.ceil(0.5 * np.log(1/delta) * \
+                                   (np.power(np.log(domain_size)/epsilon, 2))))
+            
+
+            n_samples = calc_samples(0.5, 0.05)
             hXA = 0
-            epsilon = 0.1
-            delta = 0.05
-            N = int(np.ceil(0.5*np.power(np.log(2)/epsilon,2)*np.log(1/delta)))
-            for i in xrange(N):
+            for i in xrange(n_samples):
                 newobs = np.copy(self.observations)
 
                 # sample
@@ -296,8 +359,8 @@ class ExpState(object):
                                 [(1-pL) * (1-pCorrect), (1-pL) * pCorrect]]))
                 p = np.exp(logsumexp(p,0))
                 def entropy(a):
-                    return np.sum(p * np.log(p))
-                hXA += entropy(p) / N
+                    return -1 * np.sum(p * np.log(p))
+                hXA += entropy(p) / n_samples
             #print str(x) + ":" + str((hXA, epsilon))
         else:
             # exact conditional entropy
@@ -582,7 +645,7 @@ class Result(object):
         return it
 
 class PolicyRun(object):
-    def __init__(self, policy, difficulties, skills, priord, priorl):
+    def __init__(self, policy, difficulties, skills, priord, priorl, gt):
         self.policy = policy
         self.difficulties = difficulties
         self.skills = skills
@@ -592,19 +655,20 @@ class PolicyRun(object):
         self.num_workers = len(skills)
         self.obs = []
         self.scores = []
+        self.gt_labels = gt
 
-    def add_obs(self, e, s):
+    def add_obs(self, e, b, s):
         """e is a dictionary of type ((worker, question), value)
            s is the score at that round 
-
+           b is belief at that round
         """
-        self.obs.append((e,s))
+        self.obs.append((e,b,s))
              
 
     def to_json(self):
         l = []
-        for i,(e,s) in enumerate(self.obs):
-            d = {'score':s, 'votes':[]}
+        for i,(e,b,s) in enumerate(self.obs):
+            d = {'score':s, 'belief':b, 'votes':[]}
 #            print e
             for (w,q),v in e.iteritems():
                 d['votes'].append({'round': i,
@@ -615,7 +679,8 @@ class PolicyRun(object):
 
         j = {'iters': l,
              'difficulties': self.difficulties.tolist(),
-             'skills': self.skills.tolist()}
+             'skills': self.skills.tolist(),
+             'goldLabels': self.gt_labels}
 
         return json.dumps(j)
         
