@@ -18,11 +18,12 @@ import json
 
 NUM_WORKERS = 10
 NUM_QUESTIONS = 40
-NUM_EXPS = 20
+NUM_EXPS = 2
 MAX_T = 20
 KNOWN_D = True
 SAMPLE = True
 LAZY = True
+SKILL_PARAMS = (2,4,2)
 #policies = ['random','greedy','greedy_ent','rr','rr_mul']
 policies = ['random','greedy','greedy_skill','rr']
 
@@ -72,7 +73,9 @@ class ExpState(object):
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
 #        return np.random.beta(2,4,self.num_workers) + 1
-        return np.random.beta(2,4,self.num_workers) + 1
+        return np.random.beta(SKILL_PARAMS[0],
+                              SKILL_PARAMS[1],
+                              self.num_workers) * SKILL_PARAMS[2]
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
@@ -180,10 +183,18 @@ class ExpState(object):
                   '.json', 'w') as f:
             f.write(pr.to_json())
 
+        beliefs_to_write = np.vstack(posteriors)
+
+    
+
         with open('js/{}{}w{}q.beliefs.csv'.format(policy,
                                                NUM_WORKERS,
                                                NUM_QUESTIONS),'w') as f:
-            np.savetxt(f, np.vstack(posteriors), fmt='%.02f', delimiter=',')
+            f.write('iteration,' + ','.join(str(x) for x in xrange(beliefs_to_write.shape[1])) + '\n')
+            np.savetxt(f,
+                       np.hstack([np.reshape(np.arange(beliefs_to_write.shape[0]),(-1,1)),beliefs_to_write]),
+                       fmt=['%d'] + ['%.02f' for x in xrange(beliefs_to_write.shape[1])],
+                       delimiter=',')
 
         with open('js/{}{}w{}q.gt.csv'.format(policy,
                                           NUM_WORKERS,
@@ -259,6 +270,11 @@ class ExpState(object):
                     evals[c] = self.hXA(acc, c)
 
                 acc.append(max(evals, key=lambda k:evals[k]))
+
+            elif policy == 'local_s':
+                # Use local search to select argmin H(U|A)
+                pass
+
             elif policy == 'random':
                 acc.append(random.choice(candidates))
             elif policy == 'same_question':
@@ -697,6 +713,7 @@ if __name__ == '__main__':
         np.random.seed(rint)
         new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, KNOWN_D)
         print new_state.gt_difficulties
+        print new_state.gt_skills
         for p in policies:
             np.random.seed(rint)
             r = new_state.run(p)
@@ -731,6 +748,8 @@ if __name__ == '__main__':
 
     plt.ylim(ymax=1)
     plt.legend(loc="lower right")
+    plt.xlabel('Number of iterations (batch in each iteration)')
+    plt.ylabel('Prediction accuracy')
     with open('res2.png','wb') as f:
         plt.savefig(f, format="png", dpi=150)
 
