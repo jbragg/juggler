@@ -16,11 +16,12 @@ import sys
 import csv
 from ut import dbeta
 import json
+import os
 
 NUM_WORKERS = 10
-NUM_QUESTIONS = 40
-NUM_EXPS = 2
-MAX_T = 20
+NUM_QUESTIONS = 100
+NUM_EXPS = 200
+MAX_T = 20000
 KNOWN_D = True
 SAMPLE = True
 #LAZY = True
@@ -88,18 +89,36 @@ class ExpState(object):
 
         """
 
+        # try with Chris's parameters
+        lst = []
+        while len(lst) < self.num_workers:
+            r = np.random.normal(0.5465465876, 0.0583481484308)
+            if r > 0:
+                lst.append(r)
+        return np.array(lst)
+
         # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
-#        return np.random.beta(2,4,self.num_workers) + 1
         return np.random.beta(SKILL_PARAMS[0],
                               SKILL_PARAMS[1],
                               self.num_workers) * SKILL_PARAMS[2]
+
+
 
     def gen_question_difficulties(self):
         """Should be in range [0,1]
         p_correct = 1/2(1+(1-d_q)^(1/skill)
 
         """
+
+        # try with Chris's parameters
+        lst = []
+        while len(lst) < self.num_questions:
+            r = np.random.normal(0.61312076, 0.131120713602)
+            if r > 0 and r < 1:
+                lst.append(r)
+        return np.array(lst)
+
 
 #        return np.ones(self.num_questions) / 2 # all problems equal difficulty
         return np.random.beta(*self.prior,size=self.num_questions)
@@ -823,16 +842,31 @@ if __name__ == '__main__':
 #print new_state.params
 #new_state.infer(new_state.observations, new_state.params)
 
+    t = str(datetime.datetime.now())
+    os.mkdir(t)
+
+    # create figure
     for p in policies:
         plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
+
 
     plt.ylim(ymax=1)
     plt.legend(loc="lower right")
     plt.xlabel('Number of iterations (batch in each iteration)')
     plt.ylabel('Prediction accuracy')
-    with open('res2.png','wb') as f:
+    with open(t+'/res2.png','wb') as f:
         plt.savefig(f, format="png", dpi=150)
 
 
+    # save data to file
+    d = dict()
+    with open(t+'/res2.csv','wb') as f:
+        rows = [['policy','type'] + range(len(mean[policies[0]]))]
+        for p in policies:
+            rows.append([p] + ['mean'] + list(mean[p]))
+            rows.append([p] + ['stderr'] + list(stderr[p]))
+        writer = csv.writer(f) 
+        writer.writerows(rows)
 
-    pickle.dump(Result(res), open(str(datetime.datetime.now()) + '.txt','w'))
+
+    pickle.dump(Result(res), open(t+'/dump.txt','w'))
