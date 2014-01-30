@@ -13,6 +13,7 @@ import random
 import pickle
 import datetime
 import sys
+import csv
 from ut import dbeta
 import json
 
@@ -22,33 +23,50 @@ NUM_EXPS = 2
 MAX_T = 20
 KNOWN_D = True
 SAMPLE = True
-LAZY = True
+#LAZY = True
+REAL = False
 SKILL_PARAMS = (2,4,2)
 #policies = ['random','greedy','greedy_ent','rr','rr_mul']
-policies = ['random','greedy','greedy_skill','rr']
+policies = ['random','greedy','greedy_reverse','rr']
 
 
 
 class ExpState(object):
-    def __init__(self, num_questions, num_workers, known_difficulty):
-        self.num_questions = num_questions
-        self.num_workers = num_workers
-        self.known_difficulty = known_difficulty
+    def __init__(self, known_difficulty,
+                 num_questions=None, num_workers=None,
+                 gold=None, votes=None):
         self.prior = (2,2) # assume Beta(2,2) prior
+        self.known_difficulty = known_difficulty
         self.sample = SAMPLE
-        self.reset()
 
+
+        if gold is not None:
+            self.gt_labels = gold
+            self.gt_observations = votes
+            self.num_questions = len(gold)
+            self.num_workers = votes.shape[0]
+
+            self.gt_difficulties, self.gt_skills = self.est_final_params()
+            self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
+        else:
+            print "setting hem"
+            self.num_questions = num_questions
+            self.num_workers = num_workers
+
+            # generate random ground truth (random for now)
+            self.gt_labels = np.round(self.gen_labels())
+            self.gt_difficulties = self.gen_question_difficulties()
+            self.gt_skills = self.gen_worker_skills()
+            self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
+            self.gt_observations = self.gen_observations()
+
+        # other initialization
+        self.reset()
         self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
                           np.ones(num_questions)
 
         self.params = None # contains MAP label posteriors, difficulties
 
-        # generate random ground truth (random for now)
-        self.gt_labels = np.round(self.gen_labels())
-        self.gt_difficulties = self.gen_question_difficulties()
-        self.gt_skills = self.gen_worker_skills()
-        self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
-        self.gt_observations = self.gen_observations()
 
 
     ############ initialization methods ##############
@@ -108,29 +126,45 @@ class ExpState(object):
     def prob_correct_ddifficulty(self, s, d):
         return -1/2*s*np.power(1-d,s-1)
 
+    def prob_correct_dskill(self, s, d):
+        return 1/2*np.power(1-d,s)*np.log(1-d)
+
+
     def allprobs(self, skills, difficulties):
         """Return |workers| x |questions| matrix with prob of worker answering
         correctly.
         """
-        return self.prob_correct(skills[:, np.newaxis], difficulties)
+        return self.prob_correct(skills[:, np.newaxis],
+                                 difficulties)
 
     def allprobs_ddifficulty(self, skills, difficulties):
         return self.prob_correct_ddifficulty(skills[:, np.newaxis],
                                              difficulties)
 
+    def allprobs_dskill(self, skills, difficulties):
+        return self.prob_correct_dskill(skills[:, np.newaxis],
+                                        difficulties)
+
     def init_observations(self):
         """observations is |workers| x |questions| matrix
-           0 - unobserved
+           -1 - unobserved
            1 - True
            2 - False
 
         """
-        self.observations = np.zeros((self.num_workers, self.num_questions))
+        self.observations = np.zeros((self.num_workers, self.num_questions))-1
         return
     
     def rand_observations(self):
         return np.random.randint(0,3,(self.num_workers, self.num_questions))
 
+    def est_final_params(self):
+        """BUG: random for now"""
+
+        d = self.gen_question_difficulties()
+        s = self.gen_worker_skills()
+        return d,s
+        
     ######### meta methods #########
 
     def run(self, policy):
@@ -228,41 +262,47 @@ class ExpState(object):
             candidates = [i for i in self.remaining_votes if 
                           self.remaining_votes[i] and
                           i[0] not in workers_in_acc]
-            if policy == 'greedy_skill':
+
+            # BUG: assumes known skill
+            if policy == 'greedy':
+                max_w,_ = min(candidates, key=lambda x: self.gt_skills[x[0]])
+                candidates = [c for c in candidates if c[0] == max_w]
+            elif policy == 'greedy_reverse':
                 min_w,_ = max(candidates, key=lambda x: self.gt_skills[x[0]])
                 candidates = [c for c in candidates if c[0] == min_w]
-
             #print "candidates: " + str(candidates)
-            if policy == 'greedy' or policy == 'greedy_skill':
+
+            # BUG: removed incorrect LAZY code
+            if policy == 'greedy' or policy == 'greedy_reverse':
                 # BUG: force greedy_skill policy to be non-lazy
-                if LAZY and not policy == 'greedy_skill':  # force g
-                    # BUG: no priority queue for after first vote
-
-                    cur_max = float('-inf')
-                    cur_max_c = None
-                    if len(self.heuristic_vals) > 0:
-                        candidates.sort(key=lambda k: self.heuristic_vals[k],
-                                        reverse=True)
-                    for c in candidates:
-                        # only update if previous eval was at least as large as best
-                        if ((c in self.heuristic_vals and 
-                             self.heuristic_vals[c] > cur_max) or
-                            c not in self.heuristic_vals) :
-
-                            v = self.hXA(acc, c) - self.hXU(acc, c)
-                            if v > cur_max:
-                                cur_max,cur_max_c = v,c
-                            if len(acc) == 0: # only update for first in batch
-                                self.heuristic_vals[c] = v
-                        else:
-                            num_skipped += 1
-
-                    acc.append(cur_max_c)
-                else:
-                    for c in candidates:
-                        evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
+#                if LAZY:
+#                    # BUG: no priority queue for after first vote
+#
+#                    cur_max = float('-inf')
+#                    cur_max_c = None
+#                    if len(self.heuristic_vals) > 0:
+#                        candidates.sort(key=lambda k: self.heuristic_vals[k],
+#                                        reverse=True)
+#                    for c in candidates:
+#                        # only update if previous eval was at least as large as best
+#                        if ((c in self.heuristic_vals and 
+#                             self.heuristic_vals[c] > cur_max) or
+#                            c not in self.heuristic_vals) :
+#
+#                            v = self.hXA(acc, c) - self.hXU(acc, c)
+#                            if v > cur_max:
+#                                cur_max,cur_max_c = v,c
+#                            if len(acc) == 0: # only update for first in batch
+#                                self.heuristic_vals[c] = v
+#                        else:
+#                            num_skipped += 1
+#
+#                    acc.append(cur_max_c)
+#                else:
+                for c in candidates:
+                    evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
                         
-                    acc.append(max(evals, key=lambda k:evals[k]))
+                acc.append(max(evals, key=lambda k:evals[k]))
 
             elif policy == 'greedy_ent':
                 # BUG: doesn't use lazy eval 
@@ -285,7 +325,7 @@ class ExpState(object):
                 else:
                     acc.append(random.choice(candidates))
             elif policy == 'rr':
-                q_remaining = np.sum(self.observations == 0, 0)
+                q_remaining = np.sum(self.observations == -1, 0)
                 for w,q in acc:
                     q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
@@ -293,7 +333,7 @@ class ExpState(object):
                 l = [(w,q) for w,q in candidates if q == q_sel]
                 acc.append(random.choice(l))
             elif policy == 'rr_mul':
-                q_remaining = np.sum(self.observations == 0, 0)
+                q_remaining = np.sum(self.observations == -1, 0)
                 for w,q in acc:
                     q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
@@ -422,20 +462,27 @@ class ExpState(object):
     
     def update_posteriors(self):
         """ keep for legacy reasons """
-        self.run_em()
+        params, posteriors = self.run_em(not self.known_difficulty)
+        self.params = params
+        self.posteriors = posteriors
+
+
         self.probs = self.allprobs(self.gt_skills,
                                    self.params['difficulties'])
                    
        
-    def run_em(self):
-        """ learn params and sets self.posteriors """
+    def run_em(self, estimate_difficulty_p, observations=None):
+        """ learn params and posteriors """
+        if observations is None:
+            observations = self.observations
+
         def E(params):
-            if self.known_difficulty:
-                post, ll = self.infer(self.observations,
+            if estimate_difficulty_p:
+                post, ll = self.infer(observations,
                                       {'label': params['label'],
                                        'difficulties': self.gt_difficulties})
             else:
-                post, ll = self.infer(self.observations, params)
+                post, ll = self.infer(observations, params)
                 ll += np.sum(np.log(scipy.stats.beta.pdf(params['difficulties'],
                                                  self.prior[0],
                                                  self.prior[1])))
@@ -451,7 +498,7 @@ class ExpState(object):
 
 
         def M(posteriors):
-            if self.known_difficulty:
+            if not estimate_difficulty_p:
                 params = dict()
                 params['difficulties'] = self.gt_difficulties
                 params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
@@ -479,8 +526,8 @@ class ExpState(object):
                                         difficulties)
 #                    priors = prior * np.ones(self.num_questions)
 
-                    true_votes = (self.observations == 1)   
-                    false_votes = (self.observations == 2)   
+                    true_votes = (observations == 0)   
+                    false_votes = (observations == 1)   
 
 
 
@@ -575,8 +622,7 @@ class ExpState(object):
 #        print str(em_round) + " EM rounds"
 #        print params['label']
 #        print params['difficulties']
-        self.params = params
-        self.posteriors = posteriors
+        return params, posteriors
 
 
     def infer(self, observations, params):
@@ -588,8 +634,8 @@ class ExpState(object):
         probs = self.allprobs(self.gt_skills, params['difficulties'])
         priors = prior * np.ones(self.num_questions)
          
-        true_votes = (observations == 1)   
-        false_votes = (observations == 2)   
+        true_votes = (observations == 0)   
+        false_votes = (observations == 1)   
 
         ptrue = np.log(priors) + np.sum(np.log(probs) * true_votes, 0) + \
                                  np.sum(np.log(1-probs) * false_votes, 0)
@@ -607,10 +653,7 @@ class ExpState(object):
         for w,q in votes:
 
             # update observations matrix
-            if self.gt_observations[w,q]:
-                self.observations[w,q] = 1
-            else:
-                self.observations[w,q] = 2
+            self.observations[w,q] = self.gt_observations[w,q]
 
             # update remaining / observed
             self.remaining_votes[w,q] = False
@@ -706,14 +749,50 @@ class PolicyRun(object):
 if __name__ == '__main__':
     accs = dict()
     res = dict()
-    for i in xrange(NUM_EXPS):
+    if not REAL:
+        for i in xrange(NUM_EXPS):
+            rint = random.randint(0,sys.maxint)
+            print '------------'
+            print 'iteration: ' + str(i)
+            np.random.seed(rint)
+            new_state = ExpState(KNOWN_D,
+                                 num_questions=NUM_QUESTIONS,
+                                 num_workers=NUM_WORKERS)
+            print new_state.gt_difficulties
+            print new_state.gt_skills
+            print new_state.gt_probs
+            for p in policies:
+                np.random.seed(rint)
+                r = new_state.run(p)
+                if i == 0:
+                    accs[p] = r['accuracies']
+                else:
+                    accs[p] = np.vstack([accs[p], r['accuracies']])
+
+                res[p,i] = r
+    else:
+        # load experimental data
+        with open('data/gold.txt','r') as f:
+            gold = np.array([int(x.strip()) for x in f])
+        with open('data/db_nel.csv','r') as f:
+            d = dict()
+            reader = csv.DictReader(f)
+            for r in reader:
+                w = r['worker']
+                v = int(r['response'])
+                item = int(r['itemid'])
+                if w not in d:
+                    d[w] = dict()
+                d[w][item] = v
+
+            max_len = max(len(d[w]) for w in d)
+            w_completed = sorted([w for w in d if len(d[w]) == max_len])
+
+            votes = np.array([[d[w][k] for k in sorted(d[w].iterkeys())] for
+                              w in w_completed])
+
         rint = random.randint(0,sys.maxint)
-        print '------------'
-        print 'iteration: ' + str(i)
-        np.random.seed(rint)
-        new_state = ExpState(NUM_QUESTIONS, NUM_WORKERS, KNOWN_D)
-        print new_state.gt_difficulties
-        print new_state.gt_skills
+        new_state = ExpState(KNOWN_D, gold=gold, votes=votes)
         for p in policies:
             np.random.seed(rint)
             r = new_state.run(p)
@@ -723,6 +802,7 @@ if __name__ == '__main__':
                 accs[p] = np.vstack([accs[p], r['accuracies']])
 
             res[p,i] = r
+
 
 
 
