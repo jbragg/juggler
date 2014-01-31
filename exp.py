@@ -19,25 +19,28 @@ import json
 import os
 
 NUM_WORKERS = 10
-NUM_QUESTIONS = 100
-NUM_EXPS = 200
+NUM_QUESTIONS = 20
+NUM_EXPS = 2
 MAX_T = 20000
 KNOWN_D = True
+KNOWN_S = True
 SAMPLE = True
 #LAZY = True
-REAL = False
+REAL = True
 SKILL_PARAMS = (2,4,2)
-#policies = ['random','greedy','greedy_ent','rr','rr_mul']
+####policies = ['random','greedy','greedy_ent','rr','rr_mul']
 policies = ['random','greedy','greedy_reverse','rr']
+#policies = ['random','rr']
 
 
 
 class ExpState(object):
-    def __init__(self, known_difficulty,
+    def __init__(self, known_difficulty, known_skill,
                  num_questions=None, num_workers=None,
                  gold=None, votes=None):
         self.prior = (2,2) # assume Beta(2,2) prior
         self.known_difficulty = known_difficulty
+        self.known_skill = known_skill
         self.sample = SAMPLE
 
 
@@ -50,7 +53,6 @@ class ExpState(object):
             self.gt_difficulties, self.gt_skills = self.est_final_params()
             self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
         else:
-            print "setting hem"
             self.num_questions = num_questions
             self.num_workers = num_workers
 
@@ -90,14 +92,13 @@ class ExpState(object):
         """
 
         # try with Chris's parameters
-        lst = []
-        while len(lst) < self.num_workers:
-            r = np.random.normal(0.5465465876, 0.0583481484308)
-            if r > 0:
-                lst.append(r)
-        return np.array(lst)
+#        lst = []
+#        while len(lst) < self.num_workers:
+#            r = np.random.normal(0.5465465876, 0.0583481484308)
+#            if r > 0:
+#                lst.append(r)
+#        return np.array(lst)
 
-        # BUG: workers distributed according to Beta(2,20)
         #  --- small gammma corresponds to good workers
         return np.random.beta(SKILL_PARAMS[0],
                               SKILL_PARAMS[1],
@@ -112,12 +113,12 @@ class ExpState(object):
         """
 
         # try with Chris's parameters
-        lst = []
-        while len(lst) < self.num_questions:
-            r = np.random.normal(0.61312076, 0.131120713602)
-            if r > 0 and r < 1:
-                lst.append(r)
-        return np.array(lst)
+#        lst = []
+#        while len(lst) < self.num_questions:
+#            r = np.random.normal(0.61312076, 0.131120713602)
+#            if r > 0 and r < 1:
+#                lst.append(r)
+#        return np.array(lst)
 
 
 #        return np.ones(self.num_questions) / 2 # all problems equal difficulty
@@ -168,7 +169,7 @@ class ExpState(object):
         """observations is |workers| x |questions| matrix
            -1 - unobserved
            1 - True
-           2 - False
+           0 - False
 
         """
         self.observations = np.zeros((self.num_workers, self.num_questions))-1
@@ -180,8 +181,10 @@ class ExpState(object):
     def est_final_params(self):
         """BUG: random for now"""
 
-        d = self.gen_question_difficulties()
-        s = self.gen_worker_skills()
+        params, posteriors = self.run_em(self.gt_observations)
+        
+        d = params['difficulties']
+        s = params['skills']
         return d,s
         
     ######### meta methods #########
@@ -282,12 +285,14 @@ class ExpState(object):
                           self.remaining_votes[i] and
                           i[0] not in workers_in_acc]
 
-            # BUG: assumes known skill
+            # BUG: assumes uses best known skill (GT or MAP)
             if policy == 'greedy':
-                max_w,_ = min(candidates, key=lambda x: self.gt_skills[x[0]])
+                max_w,_ = min(candidates,
+                              key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == max_w]
             elif policy == 'greedy_reverse':
-                min_w,_ = max(candidates, key=lambda x: self.gt_skills[x[0]])
+                min_w,_ = max(candidates,
+                              key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == min_w]
             #print "candidates: " + str(candidates)
 
@@ -415,7 +420,6 @@ class ExpState(object):
                     # sample true labels using poster dist
                     # BUG : is this valid? use rejection sampling instead?
 
-                    # return same or different answer as true value
                     if np.random.random() <= self.probs[w,q]:
                         v = np.random.random() <= self.posteriors[q]
                     else:
@@ -424,7 +428,7 @@ class ExpState(object):
                     if v:
                         newobs[w,q] = 1
                     else:
-                        newobs[w,q] = 2
+                        newobs[w,q] = 0
 
                 newposts,_ = self.infer(newobs, self.params)
                 pL = newposts[x[1]]
@@ -481,27 +485,38 @@ class ExpState(object):
     
     def update_posteriors(self):
         """ keep for legacy reasons """
-        params, posteriors = self.run_em(not self.known_difficulty)
+        params, posteriors = self.run_em()
         self.params = params
         self.posteriors = posteriors
 
 
-        self.probs = self.allprobs(self.gt_skills,
+        self.probs = self.allprobs(self.params['skills'],
                                    self.params['difficulties'])
                    
        
-    def run_em(self, estimate_difficulty_p, observations=None):
+    def run_em(self, observations=None):
         """ learn params and posteriors """
         if observations is None:
+            known_d = self.known_difficulty
+            known_s = self.known_skill
             observations = self.observations
+        else: # estimating using final observations (for experiment)
+            known_d = False
+            known_s = False
+            #! NOTE: observations should be self.gt_observations
+            
+           
 
         def E(params):
-            if estimate_difficulty_p:
+            if known_s and known_d:
                 post, ll = self.infer(observations,
                                       {'label': params['label'],
+                                       'skills': self.gt_skills,
                                        'difficulties': self.gt_difficulties})
             else:
                 post, ll = self.infer(observations, params)
+
+                # add prior for difficulty (none for skill)
                 ll += np.sum(np.log(scipy.stats.beta.pdf(params['difficulties'],
                                                  self.prior[0],
                                                  self.prior[1])))
@@ -517,8 +532,9 @@ class ExpState(object):
 
 
         def M(posteriors):
-            if not estimate_difficulty_p:
+            if known_s and known_d:
                 params = dict()
+                params['skills'] = self.gt_skills
                 params['difficulties'] = self.gt_difficulties
                 params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
                                   (self.prior[0] - 1 + self.prior[1] - 1 + \
@@ -536,17 +552,29 @@ class ExpState(object):
 
 
                 def f(params_array):
-                    difficulties = params_array[0:self.num_questions]
-                    probs = self.allprobs(
-                                        self.gt_skills,
-                                        difficulties)
-                    probs_dd = self.allprobs_ddifficulty(
-                                        self.gt_skills,
-                                        difficulties)
+                    if not known_d and known_s:
+                        difficulties = params_array
+                        skills = self.gt_skills
+                    elif not known_s and known_d:
+                        skills = params_array
+                        difficulties = self.gt_difficulties
+                    else: 
+                        difficulties = params_array[:self.num_questions]
+                        skills = params_array[self.num_questions:]
+
+
+
+                    probs = self.allprobs(skills,
+                                          difficulties)
+                    probs_dd = self.allprobs_ddifficulty(skills,
+                                                         difficulties)
+                    probs_ds = self.allprobs_dskill(skills,
+                                                    difficulties)
+
 #                    priors = prior * np.ones(self.num_questions)
 
-                    true_votes = (observations == 0)   
-                    false_votes = (observations == 1)   
+                    true_votes = (observations == 1)   
+                    false_votes = (observations == 0)   
 
 
 
@@ -567,10 +595,21 @@ class ExpState(object):
                             np.sum(1/probs*probs_dd * false_votes, 0) + \
                             np.sum(1/(1-probs)*(-probs_dd) * true_votes, 0)
 
+                    ptrue_ds = \
+                            1/probs*probs_ds * true_votes + \
+                            1/(1-probs)*(-probs_ds) * false_votes
+
+                    pfalse_ds = \
+                            1/probs*probs_ds * false_votes + \
+                            1/(1-probs)*(-probs_ds) * true_votes
+
                     # result
                     v = np.sum(posteriors * ptrue + (1-posteriors) * pfalse)
                     dd = np.array(posteriors * ptrue_dd + \
                                   (1-posteriors) * pfalse_dd)
+                    ds = np.sum(posteriors * ptrue_ds + \
+                                  (1-posteriors) * pfalse_ds, 1)
+
 
                     #dd = np.append(dd, np.sum(posteriors * 1/priors + \
                     #                          (1-posteriors) * -1/(1-priors)))
@@ -592,25 +631,55 @@ class ExpState(object):
                     dd += 1/pr * dbeta(difficulties,*self.prior)
                     #print difficulties, -v, -dd
 
-                    
+                    if not known_d and known_s:
+                        jac = dd 
+                    elif not known_s and known_d:
+                        jac = ds
+                    else: 
+                        jac = np.hstack((dd,ds))
 
 
                     # return negative to minimizer
                     return (-v,
-                            -dd)
+                            -jac)
                     #                    return -v
 
 
+                init_d = 0.1 * np.ones(self.num_questions)
+                bounds_d = [(0.0000000001,0.9999999999) for 
+                           i in xrange(self.num_questions)]
+                init_s = 0.1 * np.ones(self.num_workers)
+                bounds_s = [(0.0000000001,None) for 
+                           i in xrange(self.num_workers)]
+
+                if not known_d and known_s:
+                    init = init_d
+                    bounds = bounds_d
+                elif not known_s and known_d:
+                    init = init_s
+                    bounds = bounds_s
+                else: 
+                    init = np.hstack((init_d,init_s))
+                    bounds = bounds_d + bounds_s
+
                 res = scipy.optimize.minimize(
                             f,
-                            0.1 * np.ones(self.num_questions),
+                            init,
                             method='L-BFGS-B',
                             jac=True,
-                            bounds= [(0.0000000001,0.9999999999) for 
-                                     i in xrange(self.num_questions)],
+                            bounds=bounds,
                             options={'disp':False})
 #                print res.x
-                params['difficulties'] = res.x
+                if not known_d and known_s:
+                    params['difficulties'] = res.x
+                    params['skills'] = self.gt_skills
+                elif not known_s and known_d:
+                    params['skills'] = res.x
+                    params['difficulties'] = self.gt_difficulties
+                else: 
+                    params['difficulties'] = res.x[:self.num_questions]
+                    params['skills'] = res.x[self.num_questions:]
+ 
                 return params
 #                return {'label': res.x[self.num_questions],
 #                        'difficulties': res.x[0:self.num_questions]}
@@ -618,6 +687,7 @@ class ExpState(object):
         ll = float('-inf')
         ll_change = float('inf')
         params = {'difficulties':np.random.random(self.num_questions),
+                  'skills':np.random.random(self.num_workers),
                   'label':np.random.random()}
         em_round = 0
         while ll_change > 0.001:  # run while ll increase is at least .1%
@@ -650,11 +720,11 @@ class ExpState(object):
         """
 
         prior = params['label']
-        probs = self.allprobs(self.gt_skills, params['difficulties'])
+        probs = self.allprobs(params['skills'], params['difficulties'])
         priors = prior * np.ones(self.num_questions)
          
-        true_votes = (observations == 0)   
-        false_votes = (observations == 1)   
+        true_votes = (observations == 1)   
+        false_votes = (observations == 0)   
 
         ptrue = np.log(priors) + np.sum(np.log(probs) * true_votes, 0) + \
                                  np.sum(np.log(1-probs) * false_votes, 0)
@@ -774,7 +844,7 @@ if __name__ == '__main__':
             print '------------'
             print 'iteration: ' + str(i)
             np.random.seed(rint)
-            new_state = ExpState(KNOWN_D,
+            new_state = ExpState(KNOWN_D, KNOWN_S,
                                  num_questions=NUM_QUESTIONS,
                                  num_workers=NUM_WORKERS)
             print new_state.gt_difficulties
@@ -784,43 +854,56 @@ if __name__ == '__main__':
                 np.random.seed(rint)
                 r = new_state.run(p)
                 if i == 0:
-                    accs[p] = r['accuracies']
+                    accs[p] = np.array(r['accuracies'])
                 else:
-                    accs[p] = np.vstack([accs[p], r['accuracies']])
+                    accs[p] = np.vstack((accs[p], np.array(r['accuracies'])))
 
                 res[p,i] = r
     else:
         # load experimental data
-        with open('data/gold.txt','r') as f:
-            gold = np.array([int(x.strip()) for x in f])
-        with open('data/db_nel.csv','r') as f:
+        with open('data/db_nel.csv','r') as f, open('data/gold.txt','r') as f_gold:
             d = dict()
             reader = csv.DictReader(f)
             for r in reader:
-                w = r['worker']
-                v = int(r['response'])
-                item = int(r['itemid'])
+                w = r['nel.worker']
+                v = int(r['nel.response'])
+                item = int(r['nel.itemid'])
                 if w not in d:
                     d[w] = dict()
                 d[w][item] = v
 
             max_len = max(len(d[w]) for w in d)
             w_completed = sorted([w for w in d if len(d[w]) == max_len])
+            q_list = sorted(d[w_completed[0]].keys())
 
-            votes = np.array([[d[w][k] for k in sorted(d[w].iterkeys())] for
+            votes = np.array([[d[w][k] for k in q_list] for
                               w in w_completed])
 
-        rint = random.randint(0,sys.maxint)
-        new_state = ExpState(KNOWN_D, gold=gold, votes=votes)
-        for p in policies:
-            np.random.seed(rint)
-            r = new_state.run(p)
-            if i == 0:
-                accs[p] = r['accuracies']
-            else:
-                accs[p] = np.vstack([accs[p], r['accuracies']])
 
-            res[p,i] = r
+            gold = [int(x.strip()) for x in f_gold]
+            gold = np.array([gold[i] for i in q_list]) # filter
+
+        
+        for i in xrange(NUM_EXPS):
+            rint = random.randint(0,sys.maxint)
+            new_state = ExpState(KNOWN_D, KNOWN_S, gold=gold, votes=votes)
+            for p in policies:
+                # only run once for greedy policies
+                if p in ['greedy','greedy_reverse'] and p in accs:
+                    continue
+
+                np.random.seed(rint)
+                r = new_state.run(p)
+                if i == 0:
+                    accs[p] = np.array(r['accuracies'])
+                else:
+                    accs[p] = np.vstack((accs[p], np.array(r['accuracies'])))
+
+                res[p,i] = r
+
+        for i,w in enumerate(w_completed):
+            print w, 1/new_state.gt_skills[i]
+        print new_state.gt_difficulties
 
 
 
@@ -830,11 +913,15 @@ if __name__ == '__main__':
     stderr = dict()
     for p in policies:
         #assert accs[p].shape[1] == NUM_QUESTIONS + 1
-        mean[p] = np.mean(accs[p],0)
-        stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
-        print
-        print p + ':'
-        print np.mean(accs[p],0)
+        if len(accs[p].shape)==2:
+            mean[p] = np.mean(accs[p],0)
+            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
+        else:
+            mean[p] = accs[p]
+            stderr[p] = None
+        #print
+        #print p + ':'
+        #print np.mean(accs[p],0)
 
 
 #new_state.update_posteriors()
@@ -844,6 +931,8 @@ if __name__ == '__main__':
 
     t = str(datetime.datetime.now())
     os.mkdir(t)
+
+
 
     # create figure
     for p in policies:
@@ -864,7 +953,8 @@ if __name__ == '__main__':
         rows = [['policy','type'] + range(len(mean[policies[0]]))]
         for p in policies:
             rows.append([p] + ['mean'] + list(mean[p]))
-            rows.append([p] + ['stderr'] + list(stderr[p]))
+            if stderr[p] is not None:
+                rows.append([p] + ['stderr'] + list(stderr[p]))
         writer = csv.writer(f) 
         writer.writerows(rows)
 
