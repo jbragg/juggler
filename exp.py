@@ -18,9 +18,9 @@ from ut import dbeta
 import json
 import os
 
-NUM_WORKERS = 10
-NUM_QUESTIONS = 20
-NUM_EXPS = 2
+NUM_WORKERS = 5
+NUM_QUESTIONS = 100
+NUM_EXPS = 10
 MAX_T = 20000
 KNOWN_D = True
 KNOWN_S = True
@@ -83,8 +83,9 @@ class ExpState(object):
         self.heuristic_vals = dict()
 
     def gen_labels(self):
-        """generate labels from same distribution as prior"""
-        return np.random.beta(*self.prior,size=self.num_questions)
+        """Randomly generate labels"""
+        return np.random.random(self.num_questions)
+        #return np.random.beta(*self.prior,size=self.num_questions)
 
     def gen_worker_skills(self):
         """Should be in range [0,inf)
@@ -179,9 +180,7 @@ class ExpState(object):
         return np.random.randint(0,3,(self.num_workers, self.num_questions))
 
     def est_final_params(self):
-        """BUG: random for now"""
-
-        params, posteriors = self.run_em(self.gt_observations)
+        params = self.run_em(self.gt_observations)
         
         d = params['difficulties']
         s = params['skills']
@@ -494,15 +493,16 @@ class ExpState(object):
                                    self.params['difficulties'])
                    
        
-    def run_em(self, observations=None):
+    def run_em(self, gt_observations=None):
         """ learn params and posteriors """
-        if observations is None:
+        if gt_observations is None:
             known_d = self.known_difficulty
             known_s = self.known_skill
             observations = self.observations
         else: # estimating using final observations (for experiment)
             known_d = False
             known_s = False
+            observations = gt_observations
             #! NOTE: observations should be self.gt_observations
             
            
@@ -516,16 +516,18 @@ class ExpState(object):
             else:
                 post, ll = self.infer(observations, params)
 
+                if not known_d:
                 # add prior for difficulty (none for skill)
-                ll += np.sum(np.log(scipy.stats.beta.pdf(params['difficulties'],
-                                                 self.prior[0],
-                                                 self.prior[1])))
+                    ll += np.sum(np.log(scipy.stats.beta.pdf(
+                                            params['difficulties'],
+                                            self.prior[0],
+                                            self.prior[1])))
 
 
             # add beta prior for label parameter
-            ll += np.sum(np.log(scipy.stats.beta.pdf(params['label'],
-                                                 self.prior[0],
-                                                 self.prior[1])))
+            #ll += np.sum(np.log(scipy.stats.beta.pdf(params['label'],
+            #                                     self.prior[0],
+            #                                     self.prior[1])))
 
 
             return post, ll / self.num_questions
@@ -536,9 +538,10 @@ class ExpState(object):
                 params = dict()
                 params['skills'] = self.gt_skills
                 params['difficulties'] = self.gt_difficulties
-                params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
-                                  (self.prior[0] - 1 + self.prior[1] - 1 + \
-                                   self.num_questions)
+                #params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
+                #                  (self.prior[0] - 1 + self.prior[1] - 1 + \
+                #                   self.num_questions)
+                params['label'] = 0.5 # hard-code for this exp
 
                 return params
 
@@ -546,9 +549,10 @@ class ExpState(object):
                 #params_array = np.append(params['difficulties'],
                 #                         params['label'])
                 params = dict()
-                params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
-                                  (self.prior[0] - 1 + self.prior[1] - 1 + \
-                                   self.num_questions)
+                #params['label'] = (self.prior[0] - 1 + sum(posteriors)) / \
+                #                  (self.prior[0] - 1 + self.prior[1] - 1 + \
+                #                   self.num_questions)
+                params['label'] = 0.5 # hard-code for this exp
 
 
                 def f(params_array):
@@ -648,7 +652,7 @@ class ExpState(object):
                 init_d = 0.1 * np.ones(self.num_questions)
                 bounds_d = [(0.0000000001,0.9999999999) for 
                            i in xrange(self.num_questions)]
-                init_s = 0.1 * np.ones(self.num_workers)
+                init_s = 0.9 * np.ones(self.num_workers)
                 bounds_s = [(0.0000000001,None) for 
                            i in xrange(self.num_workers)]
 
@@ -680,15 +684,22 @@ class ExpState(object):
                     params['difficulties'] = res.x[:self.num_questions]
                     params['skills'] = res.x[self.num_questions:]
  
+#                print params['skills']
+#                print params['difficulties']
                 return params
 #                return {'label': res.x[self.num_questions],
 #                        'difficulties': res.x[0:self.num_questions]}
+
+        if gt_observations is not None:
+            # hack for running only M-step for initial gold estimate
+            return M(self.gt_labels)
 
         ll = float('-inf')
         ll_change = float('inf')
         params = {'difficulties':np.random.random(self.num_questions),
                   'skills':np.random.random(self.num_workers),
-                  'label':np.random.random()}
+                  #'label':np.random.random()}
+                  'label':0.5}
         em_round = 0
         while ll_change > 0.001:  # run while ll increase is at least .1%
 #            print 'EM round: ' + str(em_round)
@@ -705,7 +716,10 @@ class ExpState(object):
 #            print 'll_change: ' + str(ll_change)
 #            print 'log likelihood: ' + str(ll)
 #            print params['difficulties']
-            assert ll_change > -0.001  # ensure ll is nondecreasing
+
+            # NOTE: good to have this assert, but fails w/ gradient ascent
+            #assert ll_change > -0.001  # ensure ll is nondecreasing
+
             em_round += 1
 
 #        print str(em_round) + " EM rounds"
@@ -874,6 +888,7 @@ if __name__ == '__main__':
 
             max_len = max(len(d[w]) for w in d)
             w_completed = sorted([w for w in d if len(d[w]) == max_len])
+            print w_completed
             q_list = sorted(d[w_completed[0]].keys())
 
             votes = np.array([[d[w][k] for k in q_list] for
