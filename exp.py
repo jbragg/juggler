@@ -203,7 +203,7 @@ class ExpState(object):
     ######### meta methods #########
 
     def run(self, policy, known_d, known_s):
-        print 'Policy: {}'.format(policy)
+        print 'Policy: {0}'.format(policy)
         self.reset()
         self.known_difficulty = known_d
         self.known_skill = known_s
@@ -228,7 +228,7 @@ class ExpState(object):
 
 
         while len(self.remaining_votes_list()) > 0 and T < self.max_iter:
-            print 'Remaining votes: {:4d}'.format(
+            print 'Remaining votes: {0:4d}'.format(
                     len(self.remaining_votes_list()))
 
             # select votes
@@ -932,7 +932,7 @@ def mkdir_or_ignore(d):
 #------------------- MAIN --------------------
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print 'usage: {} policy_file'.format(sys.argv[0])
+        print 'usage: {0} policy_file'.format(sys.argv[0])
         sys.exit()
 
     # load
