@@ -1,0 +1,34 @@
+{
+"exp_name": "p-test",
+"n_workers": "3",
+"n_questions": "50",
+"sample": "True",
+"n_exps": "2",
+
+"real": "False",
+
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy",
+ "type": "greedy",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+}
+]
+}
