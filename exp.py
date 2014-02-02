@@ -865,7 +865,71 @@ class PolicyRun(object):
         
 
 
+def save_results(res_path, exp_name, res, accs):
+    mean = dict()
+    stderr = dict()
+    for p in policies:
+        p = p['name']
+        #assert accs[p].shape[1] == NUM_QUESTIONS + 1
+        if len(accs[p].shape)==2:
+            mean[p] = np.mean(accs[p],0)
+            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
+        else:
+            mean[p] = accs[p]
+            stderr[p] = None
+        #print
+        #print p + ':'
+        #print np.mean(accs[p],0)
 
+
+#new_state.update_posteriors()
+#print new_state.observations
+#print new_state.params
+#new_state.infer(new_state.observations, new_state.params)
+
+
+    # create figure
+    plt.close('all')
+    for p in policies:
+        p = p['name']
+        plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
+
+
+    plt.ylim(ymax=1)
+    plt.legend(loc="lower right")
+    plt.xlabel('Number of iterations (batch in each iteration)')
+    plt.ylabel('Prediction accuracy')
+    with open(os.path.join(res_path,'plot.png'),'wb') as f:
+        plt.savefig(f, format="png", dpi=150)
+
+
+    # save data to file
+    d = dict()
+    with open(os.path.join(res_path,'plot.csv'),'wb') as f:
+        num_iterations = len(mean[policies[0]['name']])
+        rows = [['policy','type','iteration','val']]
+        for p in policies:
+            p = p['name']
+            for i in xrange(num_iterations):
+                rows.append([p, 'mean', i, mean[p][i]])
+            for i in xrange(num_iterations):
+                if stderr[p] is not None:
+                    rows.append([p, 'stderr', i, stderr[p][i]])
+        writer = csv.writer(f) 
+        writer.writerows(rows)
+
+
+    pickle.dump(Result(res), open(os.path.join(res_path,'dump.txt'),'w'))
+
+
+def mkdir_or_ignore(d):
+    try:
+        os.mkdir(d)
+    except OSError:
+        pass # dir already exists
+
+
+#------------------- MAIN --------------------
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print 'usage: {} policy_file'.format(sys.argv[0])
@@ -891,6 +955,15 @@ if __name__ == '__main__':
     gold = parse.LoadGold(os.path.join('data','gold.txt'),
                           os.path.join('data','db_nel.csv'),
                           os.path.join('data','gold_params.csv'))
+
+    mkdir_or_ignore('res')
+    res_path = os.path.join('res',exp_name)
+    mkdir_or_ignore(res_path)
+   
+    # copy policy file
+    import shutil
+    shutil.copy(sys.argv[1], res_path)
+
 
 
     # run experiments
@@ -937,77 +1010,7 @@ if __name__ == '__main__':
 
             res[p['name'],i] = r
 
+        # overwrite results in each iter
+        save_results(res_path, exp_name, res, accs)
 
 
-
-
-
-    mean = dict()
-    stderr = dict()
-    for p in policies:
-        p = p['name']
-        #assert accs[p].shape[1] == NUM_QUESTIONS + 1
-        if len(accs[p].shape)==2:
-            mean[p] = np.mean(accs[p],0)
-            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
-        else:
-            mean[p] = accs[p]
-            stderr[p] = None
-        #print
-        #print p + ':'
-        #print np.mean(accs[p],0)
-
-
-#new_state.update_posteriors()
-#print new_state.observations
-#print new_state.params
-#new_state.infer(new_state.observations, new_state.params)
-
-    t = str(datetime.datetime.now())
-    def mkdir_or_ignore(d):
-        try:
-            os.mkdir(d)
-        except OSError:
-            pass # dir already exists
-
-    mkdir_or_ignore('res')
-    res_path = os.path.join('res',exp_name)
-    mkdir_or_ignore(res_path)
-
-
-
-    # create figure
-    for p in policies:
-        p = p['name']
-        plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
-
-
-    plt.ylim(ymax=1)
-    plt.legend(loc="lower right")
-    plt.xlabel('Number of iterations (batch in each iteration)')
-    plt.ylabel('Prediction accuracy')
-    with open(os.path.join(res_path,'plot.png'),'wb') as f:
-        plt.savefig(f, format="png", dpi=150)
-
-
-    # save data to file
-    d = dict()
-    with open(os.path.join(res_path,'plot.csv'),'wb') as f:
-        num_iterations = len(mean[policies[0]['name']])
-        rows = [['policy','type','iteration','val']]
-        for p in policies:
-            p = p['name']
-            for i in xrange(num_iterations):
-                rows.append([p, 'mean', i, mean[p][i]])
-            for i in xrange(num_iterations):
-                if stderr[p] is not None:
-                    rows.append([p, 'stderr', i, stderr[p][i]])
-        writer = csv.writer(f) 
-        writer.writerows(rows)
-
-    # copy policy file
-    import shutil
-    shutil.copy(sys.argv[1], res_path)
-
-
-    pickle.dump(Result(res), open(os.path.join(res_path,'dump.txt'),'w'))
