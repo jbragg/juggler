@@ -18,40 +18,41 @@ from ut import dbeta
 import json
 import os
 
-NUM_WORKERS = 5
-NUM_QUESTIONS = 100
-NUM_EXPS = 10
-MAX_T = 20000
-KNOWN_D = True
-KNOWN_S = True
-SAMPLE = True
-#LAZY = True
-REAL = True
-SKILL_PARAMS = (2,4,2)
-####policies = ['random','greedy','greedy_ent','rr','rr_mul']
-policies = ['random','greedy','greedy_reverse','rr']
-#policies = ['random','rr']
+import parse
 
-
+ODESK_PARAMS = (0.7936, 0.2861)
 
 class ExpState(object):
-    def __init__(self, known_difficulty, known_skill,
+    def __init__(self, sample=True,
                  num_questions=None, num_workers=None,
-                 gold=None, votes=None):
-        self.prior = (2,2) # assume Beta(2,2) prior
-        self.known_difficulty = known_difficulty
-        self.known_skill = known_skill
-        self.sample = SAMPLE
+                 gold=None, votes=None,
+                 max_iter=float('inf'),
+                 skill_params=ODESK_PARAMS,
+                 difficulties=None):
+
+        self.max_iter = max_iter
+        self.skill_params = skill_params
+        self.prior = (2,2) # prior for diff (was prior for diff and label)
+        self.sample = sample
 
 
         if gold is not None:
             self.gt_labels = gold
-            self.gt_observations = votes
             self.num_questions = len(gold)
-            self.num_workers = votes.shape[0]
 
-            self.gt_difficulties, self.gt_skills = self.est_final_params()
-            self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
+            if difficulties is None:
+                self.gt_observations = votes
+                self.num_workers = votes.shape[0]
+                self.gt_difficulties, self.gt_skills = self.est_final_params()
+                self.gt_probs = self.allprobs(self.gt_skills,
+                                              self.gt_difficulties)
+            else:
+                self.num_workers = num_workers
+                self.gt_difficulties = difficulties
+                self.gt_skills = self.gen_worker_skills()
+                self.gt_probs = self.allprobs(self.gt_skills,
+                                              self.gt_difficulties)
+                self.gt_observations = self.gen_observations()
         else:
             self.num_questions = num_questions
             self.num_workers = num_workers
@@ -60,13 +61,16 @@ class ExpState(object):
             self.gt_labels = np.round(self.gen_labels())
             self.gt_difficulties = self.gen_question_difficulties()
             self.gt_skills = self.gen_worker_skills()
-            self.gt_probs = self.allprobs(self.gt_skills, self.gt_difficulties)
+            self.gt_probs = self.allprobs(self.gt_skills,
+                                          self.gt_difficulties)
             self.gt_observations = self.gen_observations()
+
 
         # other initialization
         self.reset()
-        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
-                          np.ones(num_questions)
+#        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
+#                          np.ones(num_questions)
+        self.posteriors = 0.5 * np.ones(num_questions)
 
         self.params = None # contains MAP label posteriors, difficulties
 
@@ -100,10 +104,16 @@ class ExpState(object):
 #                lst.append(r)
 #        return np.array(lst)
 
-        #  --- small gammma corresponds to good workers
-        return np.random.beta(SKILL_PARAMS[0],
-                              SKILL_PARAMS[1],
-                              self.num_workers) * SKILL_PARAMS[2]
+        #  NOTE: small gammma corresponds to good workers
+        
+        # use rejection sampling to exclude <= 0
+        lst = []
+        while len(lst) < self.num_workers:
+            v = np.random.normal(*self.skill_params)
+            if v > 0:
+                lst.append(v)
+
+        return np.array(lst)
 
 
 
@@ -179,24 +189,30 @@ class ExpState(object):
     def rand_observations(self):
         return np.random.randint(0,3,(self.num_workers, self.num_questions))
 
+
     def est_final_params(self):
         params = self.run_em(self.gt_observations)
         
+        
         d = params['difficulties']
         s = params['skills']
+        
+        parse.params_to_file('gold_params.csv',params)
         return d,s
         
     ######### meta methods #########
 
-    def run(self, policy):
+    def run(self, policy, known_d, known_s):
         print 'Policy: {}'.format(policy)
         self.reset()
+        self.known_difficulty = known_d
+        self.known_skill = known_s
         self.accuracies = []
         posteriors = []
         votes = []
 
-        pr = PolicyRun(policy, self.gt_difficulties, self.gt_skills,
-                       self.prior, self.prior, self.gt_labels.tolist())
+#        pr = PolicyRun(policy, self.gt_difficulties, self.gt_skills,
+#                       self.prior, self.prior, self.gt_labels.tolist())
         
         T = 0
 
@@ -207,12 +223,13 @@ class ExpState(object):
 
         votes.append([])
         update()
-        pr.add_obs(dict(), self.posteriors.tolist(), self.score())
+#        pr.add_obs(dict(), self.posteriors.tolist(), self.score())
 
 
 
-        while len(self.remaining_votes_list()) > 0 and T < MAX_T:
-            print "Remaining votes: " + str(len(self.remaining_votes_list()))
+        while len(self.remaining_votes_list()) > 0 and T < self.max_iter:
+            print 'Remaining votes: {:4d}'.format(
+                    len(self.remaining_votes_list()))
 
             # select votes
             next_votes = self.select_votes(policy)
@@ -224,39 +241,39 @@ class ExpState(object):
             
             T += 1
 
-            pr.add_obs(dict([(i,int(self.gt_observations[i])) for
-                             i in next_votes]),
-                       self.posteriors.tolist(),
-                       self.score())
+#            pr.add_obs(dict([(i,int(self.gt_observations[i])) for
+#                             i in next_votes]),
+#                       self.posteriors.tolist(),
+#                       self.score())
 
         # hack: write json
         #import os
         #os.mkdir('js')  # bug: ensure directory exists
-        with open('js/' + policy + \
-                          str(NUM_WORKERS) + 'w' + \
-                          str(NUM_QUESTIONS) + 'q' + \
-                  '.json', 'w') as f:
-            f.write(pr.to_json())
+#        with open('js/' + policy + \
+#                          str(NUM_WORKERS) + 'w' + \
+#                          str(NUM_QUESTIONS) + 'q' + \
+#                  '.json', 'w') as f:
+#            f.write(pr.to_json())
 
-        beliefs_to_write = np.vstack(posteriors)
-
-    
-
-        with open('js/{}{}w{}q.beliefs.csv'.format(policy,
-                                               NUM_WORKERS,
-                                               NUM_QUESTIONS),'w') as f:
-            f.write('iteration,' + ','.join(str(x) for x in xrange(beliefs_to_write.shape[1])) + '\n')
-            np.savetxt(f,
-                       np.hstack([np.reshape(np.arange(beliefs_to_write.shape[0]),(-1,1)),beliefs_to_write]),
-                       fmt=['%d'] + ['%.02f' for x in xrange(beliefs_to_write.shape[1])],
-                       delimiter=',')
-
-        with open('js/{}{}w{}q.gt.csv'.format(policy,
-                                          NUM_WORKERS,
-                                          NUM_QUESTIONS),'w') as f:
-            np.savetxt(f, self.gt_labels[None], fmt='%d', delimiter=',')
-
-                            
+#        beliefs_to_write = np.vstack(posteriors)
+#
+#    
+#
+#        with open('js/{}{}w{}q.beliefs.csv'.format(policy,
+#                                               NUM_WORKERS,
+#                                               NUM_QUESTIONS),'w') as f:
+#            f.write('iteration,' + ','.join(str(x) for x in xrange(beliefs_to_write.shape[1])) + '\n')
+#            np.savetxt(f,
+#                       np.hstack([np.reshape(np.arange(beliefs_to_write.shape[0]),(-1,1)),beliefs_to_write]),
+#                       fmt=['%d'] + ['%.02f' for x in xrange(beliefs_to_write.shape[1])],
+#                       delimiter=',')
+#
+#        with open('js/{}{}w{}q.gt.csv'.format(policy,
+#                                          NUM_WORKERS,
+#                                          NUM_QUESTIONS),'w') as f:
+#            np.savetxt(f, self.gt_labels[None], fmt='%d', delimiter=',')
+#
+#                            
         
 #        print
 #        print "**************"
@@ -850,75 +867,76 @@ class PolicyRun(object):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print 'usage: {} policy_file'.format(sys.argv[0])
+        sys.exit()
+
+    # load
+    with open(sys.argv[1]) as f:
+        s = json.load(f)
+
+    exp_name = s['exp_name']
+    n_workers = int(s['n_workers'])
+    n_questions = int(s['n_questions'])
+    sample_p = bool(s['sample'])
+    n_exps = int(s['n_exps'])
+
+    real_p = s['real'] == 'True'
+    if 'skill' in s:
+        skill_dist = float(s['skill']['mean']), float(s['skill']['std'])
+
+    policies = s['policies']
+
+    # load experimental data
+    gold = parse.LoadGold(os.path.join('data','gold.txt'),
+                          os.path.join('data','db_nel.csv'),
+                          os.path.join('data','gold_params.csv'))
+
+
+    # run experiments
     accs = dict()
     res = dict()
-    if not REAL:
-        for i in xrange(NUM_EXPS):
-            rint = random.randint(0,sys.maxint)
-            print '------------'
-            print 'iteration: ' + str(i)
+    #if not real_p:
+    for i in xrange(n_exps):
+        rint = random.randint(0,sys.maxint)
+        print '------------'
+        print 'iteration: ' + str(i)
+        np.random.seed(rint)
+        if not real_p:
+            new_state = ExpState(sample=sample_p,
+                                 num_questions=n_questions,
+                                 num_workers=n_workers)
+            greedy_once = False
+        elif 'skill' in s:
+            new_state = ExpState(sample=sample_p,
+                                 gold=gold.get_gt(),
+                                 difficulties=gold.get_difficulties(),
+                                 skill_params=skill_dist,
+                                 num_workers=n_workers)
+            greedy_once = False
+        else:
+            new_state = ExpState(sample=sample_p,
+                                 gold=gold.get_gt(),
+                                 votes=gold.get_votes())
+            greedy_once = True
+
+
+
+        for p in policies:
+            if greedy_once and p['type'] in ['greedy','greedy_reverse'] and p['name'] in accs:
+                continue
+
             np.random.seed(rint)
-            new_state = ExpState(KNOWN_D, KNOWN_S,
-                                 num_questions=NUM_QUESTIONS,
-                                 num_workers=NUM_WORKERS)
-            print new_state.gt_difficulties
-            print new_state.gt_skills
-            print new_state.gt_probs
-            for p in policies:
-                np.random.seed(rint)
-                r = new_state.run(p)
-                if i == 0:
-                    accs[p] = np.array(r['accuracies'])
-                else:
-                    accs[p] = np.vstack((accs[p], np.array(r['accuracies'])))
+            r = new_state.run(p['type'],
+                              known_d=p['known_d'],known_s=p['known_s'])
+            if i == 0:
+                accs[p['name']] = np.array(r['accuracies'])
+            else:
+                accs[p['name']] = np.vstack(
+                            (accs[p['name']], np.array(r['accuracies'])))
 
-                res[p,i] = r
-    else:
-        # load experimental data
-        with open('data/db_nel.csv','r') as f, open('data/gold.txt','r') as f_gold:
-            d = dict()
-            reader = csv.DictReader(f)
-            for r in reader:
-                w = r['nel.worker']
-                v = int(r['nel.response'])
-                item = int(r['nel.itemid'])
-                if w not in d:
-                    d[w] = dict()
-                d[w][item] = v
+            res[p['name'],i] = r
 
-            max_len = max(len(d[w]) for w in d)
-            w_completed = sorted([w for w in d if len(d[w]) == max_len])
-            print w_completed
-            q_list = sorted(d[w_completed[0]].keys())
-
-            votes = np.array([[d[w][k] for k in q_list] for
-                              w in w_completed])
-
-
-            gold = [int(x.strip()) for x in f_gold]
-            gold = np.array([gold[i] for i in q_list]) # filter
-
-        
-        for i in xrange(NUM_EXPS):
-            rint = random.randint(0,sys.maxint)
-            new_state = ExpState(KNOWN_D, KNOWN_S, gold=gold, votes=votes)
-            for p in policies:
-                # only run once for greedy policies
-                if p in ['greedy','greedy_reverse'] and p in accs:
-                    continue
-
-                np.random.seed(rint)
-                r = new_state.run(p)
-                if i == 0:
-                    accs[p] = np.array(r['accuracies'])
-                else:
-                    accs[p] = np.vstack((accs[p], np.array(r['accuracies'])))
-
-                res[p,i] = r
-
-        for i,w in enumerate(w_completed):
-            print w, 1/new_state.gt_skills[i]
-        print new_state.gt_difficulties
 
 
 
@@ -927,6 +945,7 @@ if __name__ == '__main__':
     mean = dict()
     stderr = dict()
     for p in policies:
+        p = p['name']
         #assert accs[p].shape[1] == NUM_QUESTIONS + 1
         if len(accs[p].shape)==2:
             mean[p] = np.mean(accs[p],0)
@@ -945,12 +964,21 @@ if __name__ == '__main__':
 #new_state.infer(new_state.observations, new_state.params)
 
     t = str(datetime.datetime.now())
-    os.mkdir(t)
+    def mkdir_or_ignore(d):
+        try:
+            os.mkdir(d)
+        except OSError:
+            pass # dir already exists
+
+    mkdir_or_ignore('res')
+    res_path = os.path.join('res',exp_name)
+    mkdir_or_ignore(res_path)
 
 
 
     # create figure
     for p in policies:
+        p = p['name']
         plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
 
 
@@ -958,20 +986,28 @@ if __name__ == '__main__':
     plt.legend(loc="lower right")
     plt.xlabel('Number of iterations (batch in each iteration)')
     plt.ylabel('Prediction accuracy')
-    with open(t+'/res2.png','wb') as f:
+    with open(os.path.join(res_path,'plot.png'),'wb') as f:
         plt.savefig(f, format="png", dpi=150)
 
 
     # save data to file
     d = dict()
-    with open(t+'/res2.csv','wb') as f:
-        rows = [['policy','type'] + range(len(mean[policies[0]]))]
+    with open(os.path.join(res_path,'plot.csv'),'wb') as f:
+        num_iterations = len(mean[policies[0]['name']])
+        rows = [['policy','type','iteration','val']]
         for p in policies:
-            rows.append([p] + ['mean'] + list(mean[p]))
-            if stderr[p] is not None:
-                rows.append([p] + ['stderr'] + list(stderr[p]))
+            p = p['name']
+            for i in xrange(num_iterations):
+                rows.append([p, 'mean', i, mean[p][i]])
+            for i in xrange(num_iterations):
+                if stderr[p] is not None:
+                    rows.append([p, 'stderr', i, stderr[p][i]])
         writer = csv.writer(f) 
         writer.writerows(rows)
 
+    # copy policy file
+    import shutil
+    shutil.copy(sys.argv[1], res_path)
 
-    pickle.dump(Result(res), open(t+'/dump.txt','w'))
+
+    pickle.dump(Result(res), open(os.path.join(res_path,'dump.txt'),'w'))
