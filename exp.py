@@ -211,6 +211,7 @@ class ExpState(object):
     def run_offline(self, policy, known_d, known_s):
         assert known_d
         assert known_s
+        self.reset()
         self.known_difficulty = known_d
         self.known_skill = known_s
 
