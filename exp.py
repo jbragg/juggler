@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import random
 import pickle
 import datetime
+import heapq
 import sys
 import csv
 from ut import dbeta
@@ -202,6 +203,34 @@ class ExpState(object):
         
     ######### meta methods #########
 
+    def update_and_score(self):
+        self.update_posteriors()
+        self.accuracies.append(self.score())
+
+
+    def run_offline(self, policy, known_d, known_s):
+        assert known_d
+        assert known_s
+        self.known_difficulty = known_d
+        self.known_skill = known_s
+
+        print 'RUNNING OFFLINE'
+        print 'Policy: {0}'.format(policy)
+
+        self.accuracies = []
+        self.update_and_score()
+
+        for depth in xrange(self.num_questions):
+            self.reset()
+            votes = self.select_votes_offline(policy, depth+1)
+
+            # make observations and update
+            self.observe(votes)
+            self.update_and_score()
+
+        return {'accuracies': self.accuracies}
+
+
     def run(self, policy, known_d, known_s):
         print 'Policy: {0}'.format(policy)
         self.reset()
@@ -216,13 +245,10 @@ class ExpState(object):
         
         T = 0
 
-        def update():
-            self.update_posteriors()
-            self.accuracies.append(self.score())
-            posteriors.append(self.posteriors)
 
         votes.append([])
-        update()
+        self.update_and_score()
+        posteriors.append(self.posteriors)
 #        pr.add_obs(dict(), self.posteriors.tolist(), self.score())
 
 
@@ -237,7 +263,8 @@ class ExpState(object):
             # make observations and update
             self.observe(next_votes)
             votes.append(next_votes)
-            update()
+            self.update_and_score()
+            posteriors.append(self.posteriors)
             
             T += 1
 
@@ -289,6 +316,50 @@ class ExpState(object):
                 "gt_skills": self.gt_skills,
                 "gt_probs": self.gt_probs,
                 "gt_observations": self.gt_observations}
+
+    def select_votes_offline(self, policy, depth):
+        assert self.known_difficulty
+        assert self.known_skill
+        assert depth > 0 and depth <= self.num_questions
+
+        if policy == 'greedy':
+            w_order = sorted(xrange(self.num_workers),
+                             key=lambda i:self.params['skills'][i])
+        elif policy == 'greedy_reverse':
+            w_order = sorted(xrange(self.num_workers),
+                             key=lambda i:-self.params['skills'][i])
+        else:
+            raise 'Undefined policy'
+
+        print 'Depth: {0}'.format(depth)
+        acc = []
+        for w in w_order:
+            h = [(float('-inf'),(w,q)) for q in xrange(self.num_questions)]
+            heapq.heapify(h)
+
+            for i in xrange(depth):
+                max_v = float('-inf')
+                max_c = None
+
+                # use -min instead of max because min heap
+                while max_v < -min(h)[0]:
+                    _, c = heapq.heappop(h)
+
+                    v = self.hXA(acc, c) - self.hXU(acc, c)
+
+                    # push negative val because min heap
+                    heapq.heappush(h,(-v,c))
+
+                    if max_v < v:
+                        max_v = v
+                        max_c = c
+
+                acc.append(max_c)
+
+                h = [(v,c) for v,c in h if c != max_c]
+                heapq.heapify(h)
+
+        return acc
 
 
     def select_votes(self, policy):
@@ -987,7 +1058,7 @@ if __name__ == '__main__':
                                  skill_params=skill_dist,
                                  num_workers=n_workers)
             greedy_once = False
-        else:
+        else: # use params estimated from gold
             new_state = ExpState(sample=sample_p,
                                  gold=gold.get_gt(),
                                  votes=gold.get_votes())
@@ -999,9 +1070,18 @@ if __name__ == '__main__':
             if greedy_once and p['type'] in ['greedy','greedy_reverse'] and p['name'] in accs:
                 continue
 
+            # run
             np.random.seed(rint)
-            r = new_state.run(p['type'],
-                              known_d=p['known_d'],known_s=p['known_s'])
+            if 'offline' in p:
+                r = new_state.run_offline(p['type'],
+                                          known_d=p['known_d'],
+                                          known_s=p['known_s'])
+            else:
+                r = new_state.run(p['type'],
+                                  known_d=p['known_d'],
+                                  known_s=p['known_s'])
+
+            # store
             if i == 0:
                 accs[p['name']] = np.array(r['accuracies'])
             else:

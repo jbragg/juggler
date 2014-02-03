@@ -1,0 +1,26 @@
+{
+"exp_name": "real",
+"n_workers": "12",
+"n_questions": "198",
+"sample": "True",
+"n_exps": "100",
+
+"real": "True",
+
+
+"policies":
+[
+{"name": "Greedy",
+ "type": "greedy",
+ "known_d": "True",
+ "known_s": "True",
+ "offline": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "offline": "True"
+}
+]
+}
