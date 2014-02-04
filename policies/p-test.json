@@ -3,7 +3,7 @@
 "n_workers": "3",
 "n_questions": "50",
 "sample": "True",
-"n_exps": "2",
+"n_exps": "200",
 
 "real": "False",
 
@@ -25,10 +25,17 @@
  "known_d": "True",
  "known_s": "True"
 },
-{"name": "Greedy reverse",
- "type": "greedy_reverse",
+{"name": "Greedy offline",
+ "type": "greedy",
  "known_d": "True",
- "known_s": "True"
+ "known_s": "True",
+ "offline": "True"
+},
+{"name": "Greedy reverse offline",
+ "type": "greedy",
+ "known_d": "True",
+ "known_s": "True",
+ "offline": "True"
 }
 ]
 }
