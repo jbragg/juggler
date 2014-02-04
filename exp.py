@@ -28,11 +28,11 @@ class ExpState(object):
                  num_questions=None, num_workers=None,
                  gold=None, votes=None,
                  max_iter=float('inf'),
-                 skill_params=ODESK_PARAMS,
+                 skill_params=None,
                  difficulties=None):
 
         self.max_iter = max_iter
-        self.skill_params = skill_params
+        self.skill_params = skill_params or ODESK_PARAMS
         self.prior = (2,2) # prior for diff (was prior for diff and label)
         self.sample = sample
 
@@ -227,6 +227,9 @@ class ExpState(object):
 
             # make observations and update
             self.observe(votes)
+            print [len([v for v in votes if v[0]==w]) for
+                   w in xrange(self.num_workers)]
+            print np.sum(self.observations != -1)
             self.update_and_score()
 
         return {'accuracies': self.accuracies}
@@ -334,6 +337,7 @@ class ExpState(object):
 
         print 'Depth: {0}'.format(depth)
         acc = []
+        #print 'worker skills', [(w,self.params['skills'][w]) for w in w_order]
         for w in w_order:
             h = [(float('-inf'),(w,q)) for q in xrange(self.num_questions)]
             heapq.heapify(h)
@@ -1020,6 +1024,8 @@ if __name__ == '__main__':
     real_p = s['real'] == 'True'
     if 'skill' in s:
         skill_dist = float(s['skill']['mean']), float(s['skill']['std'])
+    else:
+        skill_dist = None
 
     policies = s['policies']
 
@@ -1050,8 +1056,10 @@ if __name__ == '__main__':
         if not real_p:
             new_state = ExpState(sample=sample_p,
                                  num_questions=n_questions,
-                                 num_workers=n_workers)
+                                 num_workers=n_workers,
+                                 skill_params=skill_dist)
             greedy_once = False
+        # cases for real data
         elif 'skill' in s:
             new_state = ExpState(sample=sample_p,
                                  gold=gold.get_gt(),
