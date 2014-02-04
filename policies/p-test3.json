@@ -1,11 +1,13 @@
 {
-"exp_name": "p-test",
-"n_workers": "10",
+"exp_name": "p-test3",
+"n_workers": "5",
 "n_questions": "50",
 "sample": "True",
 "n_exps": "200",
 
 "real": "False",
+"skill":{"mean": "0.7936",
+         "std": "0.4"},
 
 
 "policies":
@@ -29,13 +31,6 @@
  "type": "greedy_reverse",
  "known_d": "True",
  "known_s": "True"
-},
-
-{"name": "Greedy offline",
- "type": "greedy",
- "known_d": "True",
- "known_s": "True",
- "offline": "True"
 },
 {"name": "Greedy reverse offline",
  "type": "greedy_reverse",

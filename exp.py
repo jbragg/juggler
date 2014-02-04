@@ -227,9 +227,9 @@ class ExpState(object):
 
             # make observations and update
             self.observe(votes)
-            print [len([v for v in votes if v[0]==w]) for
-                   w in xrange(self.num_workers)]
-            print np.sum(self.observations != -1)
+#            print [len([v for v in votes if v[0]==w]) for
+#                   w in xrange(self.num_workers)]
+#            print np.sum(self.observations != -1)
             self.update_and_score()
 
         return {'accuracies': self.accuracies}
