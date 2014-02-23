@@ -4,6 +4,7 @@
 
 from scipy.special import gamma
 from scipy.stats import beta
+import numpy as np
 
 
 beta = beta.pdf
@@ -26,4 +27,23 @@ assert dbeta(0.6, 2, 2) != 0
 #--------------------------#
 
 
+def sample_dist(d):
+    """Sample a single element from the distribution.
+    d           --> {'type': '', 'params': []}
+    d['type']   --> 'normal_pos' || 'beta'
+    NOTE: 'type'=='normal_pos' may not terminate"""
 
+    t = d['type']
+    params = d['params']
+
+    if t == 'normal_pos':
+        # mean = params[0]
+        # stdev = params[1]
+        v = -1
+        while v <= 0:
+            v = np.random.normal(*params)
+        return v
+    elif t == 'beta':
+        return np.random.beta(*params)
+    else:
+        raise Exception('Undefined parameter distribution')
