@@ -4,6 +4,7 @@ controllers"""
 from __future__ import division
 import numpy as np
 import itertools
+from collections import defaultdict
 from scipy.misc import logsumexp
 import scipy.optimize
 import scipy.stats
@@ -68,11 +69,15 @@ class Controller():
     #----------- initialization methods --------------
     def reset(self):
         """reset for run of new policy"""
-        self.remaining_votes = dict([((i,j),True) for i,j in itertools.product(
+
+        # vote_status = None if unassigned
+        # vote_status = 0 if assigned
+        # vote_status = 1 if observed
+        self.vote_status = dict([((i,j), None) for i,j in itertools.product(
                                                 xrange(self.num_workers),
                                                 xrange(self.num_questions))])
-        self.votes = []
         self.init_observations()
+        self.time_elapsed = 0
 
 
 
@@ -87,8 +92,19 @@ class Controller():
         return
 
     #--------- utility -------------
-    def remaining_votes_list(self):
-        return [x for x in self.remaining_votes if self.remaining_votes[x]]
+    def get_votes(self, status):
+        if status == 'unassigned':
+            f = lambda x: x is None
+        elif status == 'assigned':
+            f = lambda x: x == 0
+        elif status == 'observed':
+            f = lambda x: x == 1
+        elif status == 'unobserved':
+            f = lambda x: x != 1
+        else:
+            raise Exception('Undefined vote status')
+
+        return [v for v in self.vote_status if f(self.vote_status[v])]
 
 
     #--------- probability --------
@@ -430,14 +446,26 @@ class Controller():
 
     def select_votes(self):
         policy = self.method
-        acc = []
         num_skipped = 0
-        while len(acc) < min(self.num_workers, self.remaining_votes_list()):
+
+        # get votes with different statuses (messy)
+        assigned_votes = self.get_votes('assigned')
+        unobserved_votes = self.get_votes('unobserved')
+        unassigned_votes = self.get_votes('unassigned')
+        acc = assigned_votes
+
+        while len(acc) < self.num_workers:
             evals = {}
-            workers_in_acc = [x[0] for x in acc]
-            candidates = [i for i in self.remaining_votes if 
-                          self.remaining_votes[i] and
-                          i[0] not in workers_in_acc]
+            workers_in_acc = [w for w,q in acc]
+            candidates = [(w,q) for w,q in unassigned_votes if
+                          w not in workers_in_acc]
+
+            # no more votes remain unassigned for any workers, so break
+            if not candidates:
+                remaining_workers = workers_in_acc
+                print 'Remaining workers: {}'.format(sorted(remaining_workers))
+                break
+
 
             # BUG: assumes uses best known skill (GT or MAP)
             if policy == 'greedy':
@@ -468,6 +496,7 @@ class Controller():
                 pass
 
             elif policy == 'random':
+#                print 'candidates: {}'.format(candidates)
                 acc.append(random.choice(candidates))
             elif policy == 'same_question':
                 q_in_acc = set(q for w,q in acc)
@@ -612,21 +641,24 @@ class Controller():
 
     #------- meta control ------
 
-    def observe(self, votes):
-        """Assign votes, retrieve after 1 second.
+    def observe(self, votes, time_elapsed=1):
+        """Request unassigned votes, retrieve after time_elapsed seconds.
         Update self.observations ... mutation only"""
 
-        self.platform.assign(votes)
-        votes = self.platform.get_votes(1)
-
+        votes_out = []
         for v in votes:
+            assert self.vote_status[v] != 1
+            if self.vote_status[v] is None:
+                votes_out.append(v)
+                self.vote_status[v] = 0
+        
+        self.platform.assign(votes_out)
+        votes_back = self.platform.get_votes(time_elapsed)
+        self.time_elapsed += time_elapsed
 
-            # update observations matrix
-            self.observations[v] = votes[v]
-
-            # update remaining / observed
-            self.remaining_votes[v] = False
-            self.votes.append(v)
+        for v in votes_back:
+            self.vote_status[v] = 1
+            self.observations[v] = votes_back[v]
 
 #        print 'observing votes ' + str(votes)
 
@@ -635,15 +667,24 @@ class Controller():
 
     def update_and_score(self):
         self.update_posteriors()
-        self.accuracies.append(self.score())
+
+        n_observed = len(self.get_votes('observed'))
+        score = self.score()
+
+        self.accuracies.append({'observed': n_observed,
+                                'time': self.time_elapsed,
+                                'score': score})
 
 
-    def score(self):
-        """Return accuracy of posteriors"""
+    def score(self, metric='accuracy'):
+        """Return average score for posterior predictions"""
 
         correct = np.round(self.posteriors) == self.gt_labels
-        accuracy = np.sum(correct) / len(correct)
-        return accuracy
+
+        if metric == 'accuracy':
+            return np.sum(correct) / len(correct)
+        else:
+            raise Exception('Undefined score metric')
 
     def update_posteriors(self):
         params, posteriors = self.run_em()
@@ -672,7 +713,7 @@ class Controller():
             votes = self.select_votes_offline(depth+1)
 
             # make observations and update
-            self.observe(votes)
+            self.observe(votes, float('inf'))  # BUG: untested
 #            print [len([v for v in votes if v[0]==w]) for
 #                   w in xrange(self.num_workers)]
 #            print np.sum(self.observations != -1)
@@ -698,9 +739,9 @@ class Controller():
 
 
 
-        while len(self.remaining_votes_list()) > 0:
+        while len(self.get_votes('unobserved')) > 0:
             print 'Remaining votes: {0:4d}'.format(
-                    len(self.remaining_votes_list()))
+                    len(self.get_votes('unobserved')))
 
             # select votes
             next_votes = self.select_votes()

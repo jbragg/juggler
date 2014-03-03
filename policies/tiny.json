@@ -1,0 +1,31 @@
+{
+"exp_name": "tiny",
+"n_workers": "4",
+"n_questions": "10",
+"sample": "True",
+"n_exps": "100",
+
+"real": "False",
+"skill":{"mean": "0.7936",
+         "std": "0.2"},
+
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy",
+ "type": "greedy",
+ "known_d": "True",
+ "known_s": "True"
+}
+]
+}

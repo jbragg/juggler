@@ -1,7 +1,9 @@
 #!/bin/env python
 
 from __future__ import division
+from collections import defaultdict
 import numpy as np
+from scipy import stats
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -12,6 +14,7 @@ import sys
 import csv
 import json
 import os
+import copy
 
 from control import Controller
 from platform import Platform
@@ -43,18 +46,59 @@ def est_final_params(gt_observations):
         
 
 
+def agg_scores(accs, x='observed'):
+    """Takes accuracies and computes averages and standard errors"""
+    if len(accs) == 1:
+        return [(d[x], d['score'], None) for d in accs[0]]
+
+    points = []
+
+    def next_point(scores):
+        vals = [scores[i]['score'] for i in scores]
+        max_x = max(scores[i][x] for i in scores)
+        return (max_x, np.mean(vals), stats.sem(vals, ddof=0))
+
+    # NOTE: can improve efficiency
+    # assume first score is at t=0 and votes=0
+    accs = copy.deepcopy(accs)
+    scores = dict((i,accs[i].pop(0)) for i in xrange(len(accs)))
+    points.append(next_point(scores))
+
+    while sum(len(accs[i]) for i in xrange(len(accs))) > 0:
+
+        next_x = []
+        for i in xrange(len(accs)):
+            if len(accs[i]) > 0:
+                next_x.append(accs[i][0][x])
+            else:
+                next_x.append(None)
+
+        min_x = min(x for x in next_x if x is not None)
+        for i,v in enumerate(next_x):
+            if v == min_x:
+                scores[i] = accs[i].pop(0)
+
+        points.append(next_point(scores))
+
+    return points
+
 def save_results(res_path, exp_name, res, accs):
-    mean = dict()
-    stderr = dict()
+    policies = accs.keys()
+    scores = defaultdict(dict)
     for p in policies:
-        p = p['name']
         #assert accs[p].shape[1] == NUM_QUESTIONS + 1
-        if len(accs[p].shape)==2:
-            mean[p] = np.mean(accs[p],0)
-            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
-        else:
-            mean[p] = accs[p]
-            stderr[p] = None
+        scores['votes'][p] = agg_scores(accs[p],'observed')
+        scores['time'][p] = agg_scores(accs[p],'time')
+#        print scores['votes'][p]
+#        print scores['time'][p]
+
+#        if len(accs[p] > 1):
+#            points_observed = agg_scores(accs[p])
+#            mean[p] = np.mean(accs[p],0)
+#            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
+#        else:
+#            mean[p] = accs[p]
+#            stderr[p] = None
         #print
         #print p + ':'
         #print np.mean(accs[p],0)
@@ -66,35 +110,51 @@ def save_results(res_path, exp_name, res, accs):
 #new_state.infer(new_state.observations, new_state.params)
 
 
-    # create figure
-    plt.close('all')
-    for p in policies:
-        p = p['name']
-        plt.errorbar(xrange(len(mean[p])), mean[p], yerr=stderr[p], label=p)
-
-
-    plt.ylim(ymax=1)
-    plt.legend(loc="lower right")
-    plt.xlabel('Number of iterations (batch in each iteration)')
-    plt.ylabel('Prediction accuracy')
-    with open(os.path.join(res_path,'plot.png'),'wb') as f:
-        plt.savefig(f, format="png", dpi=150)
-
-
-    # save data to file
-    d = dict()
-    with open(os.path.join(res_path,'plot.csv'),'wb') as f:
-        num_iterations = len(mean[policies[0]['name']])
-        rows = [['policy','type','iteration','val']]
+    # create figures
+    for x_type in scores:
+        plt.close('all')
         for p in policies:
-            p = p['name']
-            for i in xrange(num_iterations):
-                rows.append([p, 'mean', i, mean[p][i]])
-            for i in xrange(num_iterations):
-                if stderr[p] is not None:
-                    rows.append([p, 'stderr', i, stderr[p][i]])
-        writer = csv.writer(f) 
-        writer.writerows(rows)
+            print p
+            print scores[x_type][p]
+            x_val, mean, stderr = zip(*scores[x_type][p])
+            if any(x is None for x in stderr):
+                stderr = None
+            else:
+                stderr = [x * 1.96 for x in stderr]
+            plt.errorbar(x_val, mean, yerr=stderr, label=p)
+
+        plt.ylim(ymax=1)
+        plt.legend(loc="lower right")
+        if x_type == 'votes':
+            xlabel = 'Number of votes observed'
+        elif x_type == 'time':
+            xlabel = 'Time elapsed'
+        else:
+            raise Exception
+        plt.xlabel(xlabel)
+        plt.ylabel('Prediction accuracy')
+
+        fname = 'plot_{}'.format(x_type)
+        with open(os.path.join(res_path, fname+'.png'),'wb') as f:
+            plt.savefig(f, format="png", dpi=150)
+
+
+"""
+        # save data to file
+        d = dict()
+        with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
+            num_iterations = len(mean[policies[0]['name']])
+            rows = [['policy','type','iteration','val']]
+            for p in policies:
+                p = p['name']
+                for i in xrange(num_iterations):
+                    rows.append([p, 'mean', i, mean[p][i]])
+                for i in xrange(num_iterations):
+                    if stderr[p] is not None:
+                        rows.append([p, 'stderr', i, stderr[p][i]])
+            writer = csv.writer(f) 
+            writer.writerows(rows)
+"""
 
 
 def mkdir_or_ignore(d):
@@ -124,7 +184,7 @@ if __name__ == '__main__':
     with open(sys.argv[1]) as f:
         s = json.load(f)
 
-    exp_name = s['exp_name']
+    exp_name = s['exp_name'] # BUG: change to input filename?
     n_workers = int(s['n_workers'])
     n_questions = int(s['n_questions'])
     sample_p = bool(s['sample'])
@@ -158,7 +218,7 @@ if __name__ == '__main__':
 
 
     # run experiments
-    accs = dict()
+    accs = defaultdict(list)
     res = dict()
     #if not real_p:
     for i in xrange(n_exps):
@@ -210,11 +270,7 @@ if __name__ == '__main__':
                 r = controller.run()
 
             # store
-            if i == 0:
-                accs[p['name']] = np.array(r['accuracies'])
-            else:
-                accs[p['name']] = np.vstack(
-                            (accs[p['name']], np.array(r['accuracies'])))
+            accs[p['name']].append(r['accuracies'])
 
             res[p['name'],i] = r
 

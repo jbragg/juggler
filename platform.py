@@ -6,8 +6,11 @@ import collections
 import itertools
 import numpy as np
 from ut import sample_dist
+import scipy.stats
 
 ODESK_SKILL_DIST = {'type': 'normal_pos', 'params': [0.7936, 0.2861]}
+
+ODESK_TIME_LOGNORM = (1.12177053427, 0, 37.6586432961) # shape, loc, scale
 
 
 class Platform():
@@ -107,29 +110,31 @@ class Platform():
         times = dict()
         for w,q in itertools.product(xrange(self.num_workers),
                                      xrange(self.num_questions)):
-            times[w,q] = 1
+            times[w,q] = scipy.stats.lognorm.rvs(*ODESK_TIME_LOGNORM)
         return times
 
     #-------------- access methods ------------
     def assign(self, votes):
         """Votes is list of (worker, question) pairs"""
-        # BUG: no error checking to ensure not already asked
         for v in votes:
+            if v in self.remaining_time:
+                raise Exception('Vote already requested')
+
             self.remaining_time[v] = self.response_times[v]
 
 
     def get_votes(self, time_elapsed=1):
         """Returns dictionary of {(worker, question): vote}"""
-        # NOTE: doesn't check to ensure votes haven't been asked before
-
         votes = dict() 
 
-        new_times = dict((v, self.remaining_time[v] - time_elapsed) for
-                         v in self.remaining_time)
-
-        self.remaining_time = dict((v,new_times[t]) for
-                                   v in new_times if new_times[v]>0)
-        votes = dict((v,self.votes[v]) for v in new_times if new_times[v]<=0)
+        for v in self.remaining_time:
+            if self.remaining_time[v] is not None:
+                new_t = self.remaining_time[v] - time_elapsed
+                if new_t > 0:
+                    self.remaining_time[v] = new_t
+                else:
+                    self.remaining_time[v] = None
+                    votes[v] = self.votes[v]
 
         return votes
 
