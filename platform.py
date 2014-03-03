@@ -6,17 +6,21 @@ import collections
 import itertools
 import numpy as np
 from ut import sample_dist
-import scipy.stats
 
 ODESK_SKILL_DIST = {'type': 'normal_pos', 'params': [0.7936, 0.2861]}
 
-ODESK_TIME_LOGNORM = (1.12177053427, 0, 37.6586432961) # shape, loc, scale
-
+# NOTE: commented to assume instant workers
+# params = shape, loc, scale
+#ODESK_TIME_LOGNORM = {'type': 'lognorm',
+#                      'params': [1.12177053427, 0, 37.6586432961]}
+BETA_DIFFS = {'type': 'beta',
+              'params': [1,1]}
 
 class Platform():
     def __init__(self, gt_labels, 
                  votes=None, num_workers=None,
-                 skills=None, difficulties=None):
+                 skills=None, difficulties=None,
+                 times=None):
 
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
@@ -28,6 +32,7 @@ class Platform():
             self.gt_difficulties = difficulties
         elif num_workers is not None:
             skills = skills or ODESK_SKILL_DIST
+            difficulties = difficulties or BETA_DIFFS
             self.num_workers = num_workers
             self.gt_skills, self.gt_difficulties = self.get_params(
                                                                 skills,
@@ -36,7 +41,8 @@ class Platform():
         else:
             raise Exception('Must specify number of workers or provide votes')
 
-        self.response_times = self.make_times()
+        # times = times or ODESK_TIME_LOGNORM
+        self.response_times = self.make_times(times)
         self.reset()
 
     #-------- initialization -----------
@@ -92,7 +98,7 @@ class Platform():
         """Generate worker votes. Unvectorized, but shouldn't matter."""
         probs = self.allprobs(skills, difficulties)
 
-        o = np.zeros((self.num_workers, self.num_questions))
+        o = dict()
         for w,q in itertools.product(xrange(self.num_workers),
                                      xrange(self.num_questions)):
             pCorrect = np.random.random() <= probs[w,q]
@@ -105,13 +111,23 @@ class Platform():
 
         return o
 
-    def make_times(self):
-        """Time to complete a vote. Uniform for now."""
-        times = dict()
+    def make_times(self, times):
+        """Time to complete a vote."""
+
+        if isinstance(times, list) or isinstance(times, np.ndarray):
+            # assume times given
+            return times
+
+        gen_times = dict()
         for w,q in itertools.product(xrange(self.num_workers),
                                      xrange(self.num_questions)):
-            times[w,q] = scipy.stats.lognorm.rvs(*ODESK_TIME_LOGNORM)
-        return times
+            if isinstance(times, collections.Mapping):
+                gen_times[w,q] = sample_dist(times)
+            elif times is None:
+                gen_times[w,q] = 0
+            else:
+                raise Exception('Unknown times given')
+        return gen_times
 
     #-------------- access methods ------------
     def assign(self, votes):

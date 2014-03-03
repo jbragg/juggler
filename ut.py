@@ -3,13 +3,13 @@
 #--------------------------#
 
 from scipy.special import gamma
-from scipy.stats import beta
+from scipy import stats
 import numpy as np
 
 
-beta = beta.pdf
+beta = stats.beta.pdf
 
-# beta.pdf(x, a, b)
+# stats.beta.pdf(x, a, b)
 #def beta(x, a, b):
 #    return gamma(a+b)/(gamma(a)*gamma(b)) * x**(a-1) * (1-x)**(b-1)
 
@@ -45,5 +45,7 @@ def sample_dist(d):
         return v
     elif t == 'beta':
         return np.random.beta(*params)
+    elif t == 'lognorm':
+        return stats.lognorm.rvs(*params) 
     else:
         raise Exception('Undefined parameter distribution')

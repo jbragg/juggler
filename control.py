@@ -662,7 +662,7 @@ class Controller():
 
 #        print 'observing votes ' + str(votes)
 
-        return
+        return votes_back
 
 
     def update_and_score(self):
@@ -730,9 +730,6 @@ class Controller():
         posteriors = []
         votes = []
 
-        T = 0
-
-
         votes.append([])
         self.update_and_score()
         posteriors.append(self.posteriors)
@@ -747,13 +744,12 @@ class Controller():
             next_votes = self.select_votes()
 
             # make observations and update
-            self.observe(next_votes)
-            votes.append(next_votes)
-            self.update_and_score()
-            posteriors.append(self.posteriors)
+            votes_back = self.observe(next_votes)
+            votes.append(votes_back)
+            if votes_back:
+                self.update_and_score()
+                posteriors.append(self.posteriors)
             
-
-            T += 1
 
 
 #        print "**************"

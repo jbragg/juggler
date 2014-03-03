@@ -3,7 +3,7 @@
 "n_workers": "4",
 "n_questions": "10",
 "sample": "True",
-"n_exps": "100",
+"n_exps": "200",
 
 "real": "False",
 "skill":{"mean": "0.7936",

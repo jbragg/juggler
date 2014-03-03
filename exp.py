@@ -89,33 +89,11 @@ def save_results(res_path, exp_name, res, accs):
         #assert accs[p].shape[1] == NUM_QUESTIONS + 1
         scores['votes'][p] = agg_scores(accs[p],'observed')
         scores['time'][p] = agg_scores(accs[p],'time')
-#        print scores['votes'][p]
-#        print scores['time'][p]
-
-#        if len(accs[p] > 1):
-#            points_observed = agg_scores(accs[p])
-#            mean[p] = np.mean(accs[p],0)
-#            stderr[p] = 1.96 * np.std(accs[p],0) / np.sqrt(accs[p].shape[0])
-#        else:
-#            mean[p] = accs[p]
-#            stderr[p] = None
-        #print
-        #print p + ':'
-        #print np.mean(accs[p],0)
-
-
-#new_state.update_posteriors()
-#print new_state.observations
-#print new_state.params
-#new_state.infer(new_state.observations, new_state.params)
-
 
     # create figures
     for x_type in scores:
         plt.close('all')
         for p in policies:
-            print p
-            print scores[x_type][p]
             x_val, mean, stderr = zip(*scores[x_type][p])
             if any(x is None for x in stderr):
                 stderr = None
@@ -184,6 +162,12 @@ if __name__ == '__main__':
     with open(sys.argv[1]) as f:
         s = json.load(f)
 
+    def val_or_none(d, k, f=lambda x: x):
+        if k in d:
+            return f(d[k])
+        else:
+            return None
+
     exp_name = s['exp_name'] # BUG: change to input filename?
     n_workers = int(s['n_workers'])
     n_questions = int(s['n_questions'])
@@ -191,14 +175,9 @@ if __name__ == '__main__':
     n_exps = int(s['n_exps'])
 
     real_p = s['real'] == 'True'
-    if 'skill' in s:
-        skill_dist = parse_skill(s['skill'])
-    else:
-        skill_dist = None
-
-    # BUG: hard-code difficulty parameters (should move to policy)
-    diff_dist = {'type': 'beta',
-                 'params': [1,1]}
+    skill_dist = val_or_none(s, 'skill', lambda x: parse_skill(x))
+    diff_dist = val_or_none(s, 'diff')
+    time_dist = val_or_none(s, 'time')
 
     policies = s['policies']
 
@@ -232,20 +211,27 @@ if __name__ == '__main__':
             platform = Platform(gt_labels,
                                 num_workers=n_workers,
                                 skills=skill_dist,
-                                difficulties=diff_dist)
+                                difficulties=diff_dist,
+                                times=time_dist)
             greedy_once = False
         #------ cases for real data ------
-        elif 'skill' in s:
-            platform = Platform(gt_labels=gold.get_gt(),
-                                difficulties=gold.get_difficulties(),
-                                skills=skill_dist,
-                                num_workers=n_workers)
+        elif skill_dist or time_dist or diff_dist:
+            if time_dist is None or skill_dist is None:
+                assert n_workers == len(gold.get_skills())
+
+            platform = Platform(
+                    gt_labels=gold.get_gt(),
+                    difficulties=diff_dist or gold.get_difficulties(),
+                    times=time_dist or gold.get_times(),
+                    skills=skill_dist or gold.get_skills(),
+                    num_workers=n_workers)
             greedy_once = False
         else: # use params estimated from gold
             platform = Platform(gt_labels=gold.get_gt(),
                                 votes=gold.get_votes(),
                                 difficulties=gold.get_difficulties(),
-                                skills=gold.get_skills())
+                                skills=gold.get_skills(),
+                                times=gold.get_times())
             greedy_once = True
 
 

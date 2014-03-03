@@ -44,18 +44,23 @@ class LoadGold():
             for r in reader:
                 w = r['nel.worker']
                 v = int(r['nel.response'])
+                t = int(r['nel.duration'])
                 item = int(r['nel.itemid'])
                 if w not in d:
                     d[w] = dict()
-                d[w][item] = v
+                d[w][item] = {'v': v, 't': t}
 
             max_len = max(len(d[w]) for w in d)
             w_completed = sorted([w for w in d if len(d[w]) == max_len])
             print w_completed
             q_list = sorted(d[w_completed[0]].keys())
 
-            self.votes = np.array([[d[w][k] for k in q_list] for
+            self.votes = np.array([[d[w][q]['v'] for q in q_list] for
                                    w in w_completed])
+
+            self.times = np.array([[d[w][q]['t'] for q in q_list] for
+                                   w in w_completed])
+
 
         with open(gold_f,'r') as f_gold:
 
@@ -70,6 +75,9 @@ class LoadGold():
             self.params = None
 
     def get_votes(self):
+        return self.votes
+
+    def get_times(self):
         return self.votes
 
     def get_gt(self):
