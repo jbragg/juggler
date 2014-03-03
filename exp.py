@@ -15,6 +15,7 @@ import csv
 import json
 import os
 import copy
+import itertools
 
 from control import Controller
 from platform import Platform
@@ -90,16 +91,32 @@ def save_results(res_path, exp_name, res, accs):
         scores['votes'][p] = agg_scores(accs[p],'observed')
         scores['time'][p] = agg_scores(accs[p],'time')
 
-    # create figures
+    # create figures and save data
     for x_type in scores:
+        fname = 'plot_{}'.format(x_type)
         plt.close('all')
-        for p in policies:
-            x_val, mean, stderr = zip(*scores[x_type][p])
-            if any(x is None for x in stderr):
-                stderr = None
-            else:
-                stderr = [x * 1.96 for x in stderr]
-            plt.errorbar(x_val, mean, yerr=stderr, label=p)
+            
+        with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
+            writer = csv.writer(f) 
+            writer.writerow(['policy','x','y','stderr'])
+
+            for p in policies:
+                x_val, mean, stderr = zip(*scores[x_type][p])
+                if any(x is None for x in stderr):
+                    stderr = None
+                else:
+                    stderr = [x * 1.96 for x in stderr]
+
+                # to plot
+                plt.errorbar(x_val, mean, yerr=stderr, label=p)
+
+                # to file
+                if stderr is None:
+                    stderr = itertools.repeat(None)
+
+                for x,y,s in zip(x_val, mean, stderr):
+                    writer.writerow([p,x,y,s])
+
 
         plt.ylim(ymax=1)
         plt.legend(loc="lower right")
@@ -112,27 +129,8 @@ def save_results(res_path, exp_name, res, accs):
         plt.xlabel(xlabel)
         plt.ylabel('Prediction accuracy')
 
-        fname = 'plot_{}'.format(x_type)
         with open(os.path.join(res_path, fname+'.png'),'wb') as f:
             plt.savefig(f, format="png", dpi=150)
-
-
-"""
-        # save data to file
-        d = dict()
-        with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
-            num_iterations = len(mean[policies[0]['name']])
-            rows = [['policy','type','iteration','val']]
-            for p in policies:
-                p = p['name']
-                for i in xrange(num_iterations):
-                    rows.append([p, 'mean', i, mean[p][i]])
-                for i in xrange(num_iterations):
-                    if stderr[p] is not None:
-                        rows.append([p, 'stderr', i, stderr[p][i]])
-            writer = csv.writer(f) 
-            writer.writerows(rows)
-"""
 
 
 def mkdir_or_ignore(d):
@@ -168,7 +166,8 @@ if __name__ == '__main__':
         else:
             return None
 
-    exp_name = s['exp_name'] # BUG: change to input filename?
+    exp_name = os.path.splitext(os.path.split(sys.argv[1])[-1])[-2]
+#    exp_name = s['exp_name'] # BUG: change to input filename?
     n_workers = int(s['n_workers'])
     n_questions = int(s['n_questions'])
     sample_p = bool(s['sample'])
