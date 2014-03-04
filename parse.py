@@ -78,7 +78,7 @@ class LoadGold():
         return self.votes
 
     def get_times(self):
-        return self.votes
+        return self.times
 
     def get_gt(self):
         return self.gold
@@ -91,7 +91,7 @@ class LoadGold():
                 
     def get_skills(self):
         if self.params is not None:
-            return self.params['difficulties']
+            return self.params['skills']
         else:
             return None
  
