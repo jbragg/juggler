@@ -215,7 +215,7 @@ if __name__ == '__main__':
             greedy_once = False
         #------ cases for real data ------
         elif skill_dist or time_dist or diff_dist:
-            if time_dist is None or skill_dist is None:
+            if time_dist is not None or skill_dist is not None:
                 assert n_workers == len(gold.get_skills())
 
             platform = Platform(
@@ -224,7 +224,11 @@ if __name__ == '__main__':
                     times=time_dist or gold.get_times(),
                     skills=skill_dist or gold.get_skills(),
                     num_workers=n_workers)
-            greedy_once = False
+
+            if time_dist == '0':
+                greedy_once = True
+            else:
+                greedy_once = False
         else: # use params estimated from gold
             platform = Platform(gt_labels=gold.get_gt(),
                                 votes=gold.get_votes(),
