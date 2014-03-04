@@ -397,8 +397,7 @@ class Controller():
     #----------- control -----------
 
     def select_votes_offline(self, depth):
-        assert self.known_difficulty
-        assert self.known_skill
+        assert self.known_difficulty and self.known_skill
         assert depth > 0 and depth <= self.num_questions
 
         policy = self.method
@@ -510,17 +509,53 @@ class Controller():
                 for w,q in acc:
                     q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
-                q_sel = max(q_opt, key=lambda x: q_remaining[x])
-                l = [(w,q) for w,q in candidates if q == q_sel]
-                acc.append(random.choice(l))
-            elif policy == 'rr_mul':
+                max_remaining_votes = max(q_remaining[q] for q in q_opt)
+                q_opt = [q for q in q_opt if
+                         q_remaining[q] == max_remaining_votes]
+
+
+                # was selecting whatever max returns
+                #q_sel = max(q_opt, key=lambda x: q_remaining[x])
+
+                # random question
+                q_sel = random.choice(q_opt)
+
+                # random worker for selected question
+                w_sel = random.choice([w for w,q in candidates if q == q_sel])
+                acc.append((w_sel,q_sel))
+            elif policy == 'rr_match':
+                assert self.known_difficulty and self.known_skill
                 q_remaining = np.sum(self.observations == -1, 0)
                 for w,q in acc:
                     q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
-                q_sel = max(q_opt, key=lambda x: q_remaining[x])
-                l = [(w,q) for w,q in candidates if q == q_sel]
-                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
+                max_remaining_votes = max(q_remaining[q] for q in q_opt)
+                q_opt = [q for q in q_opt if
+                         q_remaining[q] == max_remaining_votes]
+
+                # was selecting whatever max returns
+                #q_sel = max(q_opt, key=lambda x: q_remaining[x])
+
+                # easiest question
+                min_diff = min(self.gt_difficulties[q] for q in q_opt)
+                q_sel = random.choice([q for q in q_opt if
+                                       self.gt_difficulties[q] == min_diff])
+
+                # least skilled worker
+                w_opt = [w for w,q in candidates if q == q_sel]
+                min_skill = max(self.gt_skills[w] for w in w_opt)
+                w_sel = random.choice([w for w in w_opt if 
+                                       self.gt_skills[w] == min_skill])
+
+                acc.append((w_sel,q_sel))
+#            elif policy == 'rr_mul':
+#                q_remaining = np.sum(self.observations == -1, 0)
+#                for w,q in acc:
+#                    q_remaining[q] -= 1
+#                q_opt = set(q for w,q in candidates)
+#                q_sel = max(q_opt, key=lambda x: q_remaining[x])
+#                l = [(w,q) for w,q in candidates if q == q_sel]
+#                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
             else:
                 raise Exception('Undefined policy')
 

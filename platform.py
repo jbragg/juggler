@@ -31,8 +31,10 @@ class Platform():
             self.gt_skills = skills
             self.gt_difficulties = difficulties
         elif num_workers is not None:
-            skills = skills or ODESK_SKILL_DIST
-            difficulties = difficulties or BETA_DIFFS
+            if not isinstance(skills, np.ndarray):
+                skills = skills or ODESK_SKILL_DIST
+            if not isinstance(difficulties, np.ndarray):
+                difficulties = difficulties or BETA_DIFFS
             self.num_workers = num_workers
             self.gt_skills, self.gt_difficulties = self.get_params(
                                                                 skills,
@@ -123,7 +125,7 @@ class Platform():
                                      xrange(self.num_questions)):
             if isinstance(times, collections.Mapping):
                 gen_times[w,q] = sample_dist(times)
-            elif times is None:
+            elif times is None or times == '0':
                 gen_times[w,q] = 0
             else:
                 raise Exception('Unknown times given')
