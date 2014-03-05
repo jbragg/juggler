@@ -214,7 +214,7 @@ if __name__ == '__main__':
                                 times=time_dist)
             greedy_once = False
         #------ cases for real data ------
-        elif skill_dist or diff_dist:
+        elif skill_dist or diff_dist or time_dist:
             if isinstance(time_dist, list) or isinstance(time_dist, np.ndarray) or isinstance(skill_dist, list) or isinstance(skill_dist, np.ndarray):
                 assert n_workers == len(gold.get_skills())
 
