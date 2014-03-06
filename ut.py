@@ -46,6 +46,7 @@ def sample_dist(d):
     elif t == 'beta':
         return np.random.beta(*params)
     elif t == 'lognorm':
-        return stats.lognorm.rvs(*params) 
+        shape,loc,scale = [float(x) for x in params]
+        return stats.lognorm.rvs(shape, loc, scale) 
     else:
         raise Exception('Undefined parameter distribution')

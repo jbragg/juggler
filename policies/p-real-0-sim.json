@@ -4,9 +4,10 @@
 "sample": "True",
 "n_exps": "100",
 
-"real": "False",
+"real": "True",
 
-"time": "0",
+"time": {"type": "lognorm",
+         "params": ["1.12177053427", "0", "37.6586432961"]},
 
 "policies":
 [
