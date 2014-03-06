@@ -241,7 +241,7 @@ if __name__ == '__main__':
             gt_labels = gen_labels(n_questions)
             platform = Platform(
                     num_workers=n_workers,
-                    gt_labels=gt_labels,
+                    gt_labels=first_array_or_true([labels_in, gt_labels]),
                     difficulties=first_array_or_true([diff_in,
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
