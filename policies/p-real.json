@@ -1,11 +1,14 @@
 {
-"exp_name": "real",
 "n_workers": "12",
 "n_questions": "198",
 "sample": "True",
 "n_exps": "100",
 
-"real": "True",
+"votes": "gold",
+"labels": "gold",
+"diff": "gold",
+"skill": "gold",
+"time": "gold",
 
 
 "policies":

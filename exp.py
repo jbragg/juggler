@@ -173,10 +173,11 @@ if __name__ == '__main__':
     sample_p = bool(s['sample'])
     n_exps = int(s['n_exps'])
 
-    real_p = s['real'] == 'True'
-    skill_dist = val_or_none(s, 'skill', lambda x: parse_skill(x))
-    diff_dist = val_or_none(s, 'diff')
-    time_dist = val_or_none(s, 'time')
+    skill_in = val_or_none(s, 'skill', lambda x: parse_skill(x))
+    diff_in = val_or_none(s, 'diff')
+    time_in = val_or_none(s, 'time')
+    votes_in = val_or_none(s, 'votes')
+    labels_in = val_or_none(s, 'labels')
 
     policies = s['policies']
 
@@ -185,6 +186,18 @@ if __name__ == '__main__':
                           os.path.join('data','db_nel.csv'),
                           os.path.join('data','gold_params.csv'))
 
+    if skill_in == 'gold':
+        skill_in = gold.get_skills()
+    if diff_in == 'gold':
+        diff_in = gold.get_difficulties()
+    if time_in == 'gold':
+        time_in = gold.get_times()
+    if votes_in == 'gold':
+        votes_in = gold.get_votes()
+    if labels_in == 'gold':
+        labels_in = gold.get_gt()
+
+    # prepare result directory
     mkdir_or_ignore('res')
     res_path = os.path.join('res',exp_name)
     mkdir_or_ignore(res_path)
@@ -198,49 +211,49 @@ if __name__ == '__main__':
     # run experiments
     accs = defaultdict(list)
     res = dict()
-    #if not real_p:
+
+    def first_array_or_true(lst):
+        for e in lst:
+            if isinstance(e, np.ndarray) or e:
+                return e
+        
+        return lst[-1]
+
+
     for i in xrange(n_exps):
         rint = random.randint(0,sys.maxint)
         print '------------'
         print 'iteration: ' + str(i)
         np.random.seed(rint)
-        #------ simulated data ------
-        if not real_p:
-            gt_labels = gen_labels(n_questions)
-            platform = Platform(gt_labels,
-                                num_workers=n_workers,
-                                skills=skill_dist,
-                                difficulties=diff_dist,
-                                times=time_dist)
-            greedy_once = False
-        #------ cases for real data ------
-        elif skill_dist or diff_dist or time_dist:
-            if isinstance(time_dist, list) or isinstance(time_dist, np.ndarray) or isinstance(skill_dist, list) or isinstance(skill_dist, np.ndarray):
-                assert n_workers == len(gold.get_skills())
 
-            platform = Platform(
-                    gt_labels=gold.get_gt(),
-                    difficulties=diff_dist or gold.get_difficulties(),
-                    times=time_dist or gold.get_times(),
-                    skills=skill_dist or gold.get_skills(),
-                    num_workers=n_workers)
-
-            greedy_once = False
-        else: # use params estimated from gold
-            platform = Platform(gt_labels=gold.get_gt(),
-                                votes=gold.get_votes(),
-                                difficulties=gold.get_difficulties(),
-                                skills=gold.get_skills(),
-                                times=gold.get_times())
+        # prepare
+        if isinstance(votes_in, np.ndarray) or votes_in:
             greedy_once = True
+            platform = Platform(
+                    votes = votes_in,
+                    gt_labels=first_array_or_true([labels_in, gold.get_gt()]),
+                    difficulties=first_array_or_true([diff_in,
+                                                      gold.get_difficulties()]),
+                    times=first_array_or_true([time_in, gold.get_times()]),
+                    skills=first_array_or_true([skill_in, gold.get_skills()]))
+        else:
+            greedy_once = False
+            gt_labels = gen_labels(n_questions)
+            platform = Platform(
+                    num_workers=n_workers,
+                    gt_labels=gt_labels,
+                    difficulties=first_array_or_true([diff_in,
+                                                      gold.get_difficulties()]),
+                    times=first_array_or_true([time_in, gold.get_times()]),
+                    skills=first_array_or_true([skill_in, gold.get_skills()]))
 
 
 
+        # run
         for p in policies:
             if greedy_once and p['type'] in ['greedy','greedy_reverse'] and p['name'] in accs:
                 continue
 
-            # run
             np.random.seed(rint)
             platform.reset()
             controller = Controller(method=p['type'],

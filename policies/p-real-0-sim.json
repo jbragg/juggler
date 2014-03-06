@@ -4,8 +4,10 @@
 "sample": "True",
 "n_exps": "100",
 
-"real": "True",
-
+"votes": "gold",
+"labels": "gold",
+"diff": "gold",
+"skill": "gold",
 "time": {"type": "lognorm",
          "params": ["1.12177053427", "0", "37.6586432961"]},
 
