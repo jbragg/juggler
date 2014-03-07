@@ -228,7 +228,7 @@ if __name__ == '__main__':
 
         # prepare
         if isinstance(votes_in, np.ndarray) or votes_in:
-            greedy_once = True
+            run_once = True
             platform = Platform(
                     votes = votes_in,
                     gt_labels=first_array_or_true([labels_in, gold.get_gt()]),
@@ -237,7 +237,7 @@ if __name__ == '__main__':
                     times=first_array_or_true([time_in, gold.get_times()]),
                     skills=first_array_or_true([skill_in, gold.get_skills()]))
         else:
-            greedy_once = False
+            run_once = False
             gt_labels = gen_labels(n_questions)
             platform = Platform(
                     num_workers=n_workers,
@@ -251,7 +251,7 @@ if __name__ == '__main__':
 
         # run
         for p in policies:
-            if greedy_once and p['type'] in ['greedy','greedy_reverse'] and p['name'] in accs:
+            if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in accs:
                 continue
 
             np.random.seed(rint)
