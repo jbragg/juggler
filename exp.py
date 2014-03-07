@@ -100,7 +100,7 @@ def save_results(res_path, exp_name, res, accs):
             writer = csv.writer(f) 
             writer.writerow(['policy','x','y','stderr'])
 
-            for p in policies:
+            for p in sorted(policies):
                 x_val, mean, stderr = zip(*scores[x_type][p])
                 if any(x is None for x in stderr):
                     stderr = None

@@ -1,13 +1,14 @@
 {
-"exp_name": "tiny",
 "n_workers": "4",
 "n_questions": "10",
 "sample": "True",
 "n_exps": "200",
 
-"real": "False",
-"skill":{"mean": "0.7936",
-         "std": "0.2"},
+"skill": {"mean": "0.7936",
+          "std": "0.2"},
+"diff": {"type": "beta",
+         "params": ["1","1"]},
+"time": "0",
 
 
 "policies":
@@ -22,10 +23,31 @@
  "known_d": "True",
  "known_s": "True"
 },
+{"name": "Round robin match",
+ "type": "rr_match",
+ "known_d": "True",
+ "known_s": "True"
+},
 {"name": "Greedy",
  "type": "greedy",
  "known_d": "True",
  "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain",
+ "type": "accgain",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain reverse",
+ "type": "accgain_reverse",
+ "known_d": "True",
+ "known_s": "True"
 }
+
 ]
 }

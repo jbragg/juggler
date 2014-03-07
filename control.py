@@ -467,11 +467,11 @@ class Controller():
 
 
             # BUG: assumes uses best known skill (GT or MAP)
-            if policy == 'greedy':
+            if policy == 'greedy' or policy == 'accgain':
                 max_w,_ = min(candidates,
                               key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == max_w]
-            elif policy == 'greedy_reverse':
+            elif policy == 'greedy_reverse' or policy == 'accgain_reverse':
                 min_w,_ = max(candidates,
                               key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == min_w]
@@ -481,6 +481,12 @@ class Controller():
                 for c in candidates:
                     evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
                         
+                acc.append(max(evals, key=lambda k:evals[k]))
+
+            elif policy == 'accgain' or policy == 'accgain_reverse':
+                for c in candidates:
+                    evals[c] = self.acc_gain(acc, c)
+
                 acc.append(max(evals, key=lambda k:evals[k]))
 
             elif policy == 'greedy_ent':
@@ -622,6 +628,7 @@ class Controller():
                     else:
                         newobs[w,q] = 0
 
+                # BUG: don't need to do inference for all questions if skill known
                 newposts,_ = self.infer(newobs, self.params)
                 pL = newposts[x[1]]
                 pCorrect = self.probs[x]
@@ -672,6 +679,54 @@ class Controller():
             hXA = hXA - hA
 
         return hXA
+
+    def acc_gain(self, acc, x):
+        """Exact expected accuracy gain (change to sampling if slow)"""
+        # NOTE: compute locally for a question since worker skill known
+        accgain = 0
+
+        rel_q = x[1]
+        rel_acc = [(w,q) for w,q in acc if q == rel_q]
+
+
+        for tup in itertools.product(*([0,1] for x in xrange(len(rel_acc)+1))):
+            # NOTE: changed this to log (different from hXA above)
+            pA1 = np.log(self.posteriors[rel_q])
+            pA0 = np.log(1-self.posteriors[rel_q])
+
+            for ind,v in zip(rel_acc,tup):
+                if v:
+                    pA1 += np.log(self.probs[ind])
+                    pA0 += np.log(1-self.probs[ind])
+                else:
+                    pA1 += np.log(1-self.probs[ind])
+                    pA0 += np.log(self.probs[ind])
+
+            # log P(a)
+            pA = np.logaddexp(pA1,pA0)
+            accuracy_old = max(np.exp(pA1-pA), np.exp(pA0-pA))
+
+            if tup[-1]:
+                pAX1 = pA1 + np.log(self.probs[x])
+                pAX0 = pA0 + np.log(1-self.probs[x])
+            else:
+                pAX0 = pA0 + np.log(self.probs[x])
+                pAX1 = pA1 + np.log(1-self.probs[x])
+
+            # weight
+            pAX = np.logaddexp(pAX0,pAX1)
+
+            new_prob = np.exp(pAX1 - pAX)
+            accuracy_new = max(new_prob, 1-new_prob)
+
+#            print 'v(before)={}'.format(accgain)
+#            print '{} * {}'.format(np.exp(pAX), accuracy_new - accuracy_old)
+            accgain += np.exp(pAX) * (accuracy_new - accuracy_old)
+#            print 'v(after)={}'.format(accgain)
+#        print 'final: {}'.format(accgain)
+
+        return accgain
+
 
 
     #------- meta control ------

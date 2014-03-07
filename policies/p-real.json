@@ -37,6 +37,18 @@
  "type": "greedy_reverse",
  "known_d": "True",
  "known_s": "True"
+},
+{"name": "Accgain",
+ "type": "accgain",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain reverse",
+ "type": "accgain_reverse",
+ "known_d": "True",
+ "known_s": "True"
 }
+
+
 ]
 }
