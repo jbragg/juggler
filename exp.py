@@ -107,8 +107,13 @@ def save_results(res_path, exp_name, res, accs):
                 else:
                     stderr = [x * 1.96 for x in stderr]
 
-                # to plot
+                # plot with error bars
+                plt.figure(0)
                 plt.errorbar(x_val, mean, yerr=stderr, label=p)
+
+                # plot without 
+                plt.figure(1)
+                plt.plot(x_val, mean, label=p)
 
                 # to file
                 if stderr is None:
@@ -118,19 +123,27 @@ def save_results(res_path, exp_name, res, accs):
                     writer.writerow([p,x,y,s])
 
 
-        plt.ylim(ymax=1)
-        plt.legend(loc="lower right")
-        if x_type == 'votes':
-            xlabel = 'Number of votes observed'
-        elif x_type == 'time':
-            xlabel = 'Time elapsed'
-        else:
-            raise Exception
-        plt.xlabel(xlabel)
-        plt.ylabel('Prediction accuracy')
+        for i in xrange(2):
+            plt.figure(i)
+            plt.ylim(ymax=1)
+            plt.legend(loc="lower right")
+            if x_type == 'votes':
+                xlabel = 'Number of votes observed'
+            elif x_type == 'time':
+                xlabel = 'Time elapsed'
+            else:
+                raise Exception
+            plt.xlabel(xlabel)
+            plt.ylabel('Prediction accuracy')
 
+        plt.figure(0)
+        with open(os.path.join(res_path, fname+'_err.png'),'wb') as f:
+            plt.savefig(f, format="png", dpi=150)
+
+        plt.figure(1)
         with open(os.path.join(res_path, fname+'.png'),'wb') as f:
             plt.savefig(f, format="png", dpi=150)
+
 
 
 def mkdir_or_ignore(d):

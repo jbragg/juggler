@@ -596,6 +596,7 @@ class Controller():
 
         # compute P(X | A)
         # sample
+        self.sample = False
         if self.sample:
 
             def calc_samples(epsilon, delta, domain_size=2):
