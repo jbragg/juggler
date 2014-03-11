@@ -1,1 +1,5 @@
-/Users/jbragg/Dropbox/dotfiles/.gitignore
+.DS_Store
+.DS_STORE
+*.swp
+*.pyc
+*.log
