@@ -19,16 +19,31 @@ if __name__ == '__main__':
             p = row['policy']
             d[p].append(row)
 
+#    with open(sys.argv[2],'w') as f:
+#        names = []
+#        for p in d:
+#            names += [n + ' (' + p + ')' for n in fieldnames[1:]]
+#
+#        writer = csv.DictWriter(f, names)
+#        writer.writeheader()
+#        for i in xrange(len(d.values()[0])):
+#            row = dict()
+#            for p in d:
+#                row.update(dict((n + ' (' + p + ')', d[p][i][n]) for
+#                                n in fieldnames[1:]))
+#            writer.writerow(row)
+
     with open(sys.argv[2],'w') as f:
-        names = []
+        names = ['x']
         for p in d:
-            names += [n + ' (' + p + ')' for n in fieldnames[1:]]
+            names.append(p)
 
         writer = csv.DictWriter(f, names)
         writer.writeheader()
         for i in xrange(len(d.values()[0])):
             row = dict()
+            row['x'] = d[d.keys()[0]][i]['x']
             for p in d:
-                row.update(dict((n + ' (' + p + ')', d[p][i][n]) for
-                                n in fieldnames[1:]))
+                row[p] = d[p][i]['y']
             writer.writerow(row)
+
