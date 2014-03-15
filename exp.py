@@ -205,6 +205,18 @@ if __name__ == '__main__':
         diff_in = gold.get_difficulties()
     if time_in == 'gold':
         time_in = gold.get_times()
+    elif time_in == 'gold_params':
+        # hard-code gold params for 12 workers
+        assert n_workers == 12
+        with open('time_params.csv', 'r') as f:
+            reader = csv.DictReader(f)
+            time_in = [{'type': 'lognorm',
+                        'params': [d['shape'],d['loc'],d['scale']]} for
+                       d in reader]
+
+
+
+
     if votes_in == 'gold':
         votes_in = gold.get_votes()
     if labels_in == 'gold':

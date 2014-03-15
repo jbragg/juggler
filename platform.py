@@ -116,19 +116,25 @@ class Platform():
     def make_times(self, times):
         """Time to complete a vote."""
 
-        if isinstance(times, list) or isinstance(times, np.ndarray):
+        gen_times = dict()
+
+        if isinstance(times, list) and isinstance(times[0], collections.Mapping):
+            for i,d in enumerate(times):
+                for q in xrange(self.num_questions):
+                    gen_times[i,q] = sample_dist(d)
+        elif isinstance(times, list) or isinstance(times, np.ndarray):
             # assume times given
             return times
-
-        gen_times = dict()
-        for w,q in itertools.product(xrange(self.num_workers),
-                                     xrange(self.num_questions)):
-            if isinstance(times, collections.Mapping):
-                gen_times[w,q] = sample_dist(times)
-            elif times is None or times == '0':
-                gen_times[w,q] = 0
-            else:
-                raise Exception('Unknown times given')
+        else:
+            for w,q in itertools.product(xrange(self.num_workers),
+                                         xrange(self.num_questions)):
+                if isinstance(times, collections.Mapping):
+                    gen_times[w,q] = sample_dist(times)
+                elif times is None or times == '0':
+                    gen_times[w,q] = 0
+                else:
+                    raise Exception('Unknown times given')
+        print gen_times
         return gen_times
 
     #-------------- access methods ------------
