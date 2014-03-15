@@ -260,7 +260,8 @@ if __name__ == '__main__':
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
                     skills=first_array_or_true([skill_in, gold.get_skills()]))
-            run_once = platform.is_determinstic
+            run_once = platform.is_deterministic
+#            print run_once
         else:
             run_once = False
             gt_labels = gen_labels(n_questions)
@@ -271,7 +272,6 @@ if __name__ == '__main__':
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
                     skills=first_array_or_true([skill_in, gold.get_skills()]))
-
 
 
         # run

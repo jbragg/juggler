@@ -24,7 +24,7 @@ class Platform():
 
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
-        self.is_determinstic = True
+        self.is_deterministic = True
 
         if votes is not None:
             self.num_workers = votes.shape[0]
@@ -140,6 +140,7 @@ class Platform():
                     gen_times[w,q] = 0
                 else:
                     raise Exception('Unknown times given')
+        
         return gen_times
 
     #-------------- access methods ------------
