@@ -253,7 +253,6 @@ if __name__ == '__main__':
 
         # prepare
         if isinstance(votes_in, np.ndarray) or votes_in:
-            run_once = True
             platform = Platform(
                     votes = votes_in,
                     gt_labels=first_array_or_true([labels_in, gold.get_gt()]),
@@ -261,6 +260,7 @@ if __name__ == '__main__':
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
                     skills=first_array_or_true([skill_in, gold.get_skills()]))
+            run_once = platform.is_determinstic
         else:
             run_once = False
             gt_labels = gen_labels(n_questions)

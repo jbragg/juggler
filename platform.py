@@ -24,6 +24,7 @@ class Platform():
 
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
+        self.is_determinstic = True
 
         if votes is not None:
             self.num_workers = votes.shape[0]
@@ -64,6 +65,7 @@ class Platform():
             lst = []
             while len(lst) < self.num_workers:
                 v = sample_dist(skills)
+                self.is_deterministic = False
                 lst.append(v)
             skills = np.array(lst)
         else:
@@ -75,6 +77,7 @@ class Platform():
             lst = []
             while len(lst) < self.num_questions:
                 v = sample_dist(difficulties)
+                self.is_deterministic = False
                 lst.append(v)
             difficulties = np.array(lst)
         else:
@@ -98,6 +101,7 @@ class Platform():
 
     def make_votes(self, skills, difficulties):
         """Generate worker votes. Unvectorized, but shouldn't matter."""
+        self.is_deterministic = False
         probs = self.allprobs(skills, difficulties)
 
         o = dict()
@@ -122,6 +126,7 @@ class Platform():
             for i,d in enumerate(times):
                 for q in xrange(self.num_questions):
                     gen_times[i,q] = sample_dist(d)
+            self.is_deterministic = False
         elif isinstance(times, list) or isinstance(times, np.ndarray):
             # assume times given
             return times
@@ -130,11 +135,11 @@ class Platform():
                                          xrange(self.num_questions)):
                 if isinstance(times, collections.Mapping):
                     gen_times[w,q] = sample_dist(times)
+                    self.is_deterministic = False
                 elif times is None or times == '0':
                     gen_times[w,q] = 0
                 else:
                     raise Exception('Unknown times given')
-        print gen_times
         return gen_times
 
     #-------------- access methods ------------
