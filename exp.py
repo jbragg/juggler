@@ -143,7 +143,7 @@ def save_results(res_path, exp_name, res):
 
             for i in xrange(2):
                 plt.figure(i)
-                plt.ylim(ymax=1)
+                plt.ylim(ymin=0.5,ymax=1)
                 plt.legend(loc="lower right")
                 if x_type == 'votes':
                     xlabel = 'Number of votes observed'
