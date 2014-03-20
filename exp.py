@@ -83,66 +83,84 @@ def agg_scores(accs, x='observed'):
 
     return points
 
-def save_results(res_path, exp_name, res, accs):
-    policies = accs.keys()
-    scores = defaultdict(dict)
-    for p in policies:
-        #assert accs[p].shape[1] == NUM_QUESTIONS + 1
-        scores['votes'][p] = agg_scores(accs[p],'observed')
-        scores['time'][p] = agg_scores(accs[p],'time')
+def save_results(res_path, exp_name, res):
+    # accuracies
+    accs = dict((p, [x['accuracies'] for x in res[p]]) for p in res)
 
-    # create figures and save data
-    for x_type in scores:
-        fname = 'plot_{}'.format(x_type)
-        plt.close('all')
-            
-        with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
-            writer = csv.writer(f) 
-            writer.writerow(['policy','x','y','stderr'])
+    # expected accuracies
+    def posterior_to_exp_acc(posterior):
+        return np.mean([max(x, 1-x) for x in posterior])
 
-            for p in sorted(policies):
-                x_val, mean, stderr = zip(*scores[x_type][p])
-                if any(x is None for x in stderr):
-                    stderr = None
+    exp_accs = dict((p, [[{'observed': d['observed'],
+                           'time': d['time'],
+                           'score': posterior_to_exp_acc(d['posterior'])} for
+                          d in r['posteriors']] for
+                         r in res[p]]) for p in res)
+
+    
+    for a,t in ((accs,''), (exp_accs,'exp')):
+        policies = a.keys()
+        scores = defaultdict(dict)
+        for p in policies:
+            #assert a[p].shape[1] == NUM_QUESTIONS + 1
+            scores['votes'][p] = agg_scores(a[p],'observed')
+            scores['time'][p] = agg_scores(a[p],'time')
+
+        # create figures and save data
+        for x_type in scores:
+            fname = 'plot_{}'.format(x_type)
+            if t == 'exp':
+                fname = 'exp_' + fname
+
+            plt.close('all')
+                
+            with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
+                writer = csv.writer(f) 
+                writer.writerow(['policy','x','y','stderr'])
+
+                for p in sorted(policies):
+                    x_val, mean, stderr = zip(*scores[x_type][p])
+                    if any(x is None for x in stderr):
+                        stderr = None
+                    else:
+                        stderr = [x * 1.96 for x in stderr]
+
+                    # plot with error bars
+                    plt.figure(0)
+                    plt.errorbar(x_val, mean, yerr=stderr, label=p)
+
+                    # plot without 
+                    plt.figure(1)
+                    plt.plot(x_val, mean, label=p)
+
+                    # to file
+                    if stderr is None:
+                        stderr = itertools.repeat(None)
+
+                    for x,y,s in zip(x_val, mean, stderr):
+                        writer.writerow([p,x,y,s])
+
+
+            for i in xrange(2):
+                plt.figure(i)
+                plt.ylim(ymax=1)
+                plt.legend(loc="lower right")
+                if x_type == 'votes':
+                    xlabel = 'Number of votes observed'
+                elif x_type == 'time':
+                    xlabel = 'Time elapsed'
                 else:
-                    stderr = [x * 1.96 for x in stderr]
+                    raise Exception
+                plt.xlabel(xlabel)
+                plt.ylabel('Prediction accuracy')
 
-                # plot with error bars
-                plt.figure(0)
-                plt.errorbar(x_val, mean, yerr=stderr, label=p)
+            plt.figure(0)
+            with open(os.path.join(res_path, fname+'_err.png'),'wb') as f:
+                plt.savefig(f, format="png", dpi=150)
 
-                # plot without 
-                plt.figure(1)
-                plt.plot(x_val, mean, label=p)
-
-                # to file
-                if stderr is None:
-                    stderr = itertools.repeat(None)
-
-                for x,y,s in zip(x_val, mean, stderr):
-                    writer.writerow([p,x,y,s])
-
-
-        for i in xrange(2):
-            plt.figure(i)
-            plt.ylim(ymax=1)
-            plt.legend(loc="lower right")
-            if x_type == 'votes':
-                xlabel = 'Number of votes observed'
-            elif x_type == 'time':
-                xlabel = 'Time elapsed'
-            else:
-                raise Exception
-            plt.xlabel(xlabel)
-            plt.ylabel('Prediction accuracy')
-
-        plt.figure(0)
-        with open(os.path.join(res_path, fname+'_err.png'),'wb') as f:
-            plt.savefig(f, format="png", dpi=150)
-
-        plt.figure(1)
-        with open(os.path.join(res_path, fname+'.png'),'wb') as f:
-            plt.savefig(f, format="png", dpi=150)
+            plt.figure(1)
+            with open(os.path.join(res_path, fname+'.png'),'wb') as f:
+                plt.savefig(f, format="png", dpi=150)
 
 
 
@@ -234,8 +252,7 @@ if __name__ == '__main__':
 
 
     # run experiments
-    accs = defaultdict(list)
-    res = dict()
+    res = defaultdict(list)
 
     def first_array_or_true(lst):
         for e in lst:
@@ -276,7 +293,7 @@ if __name__ == '__main__':
 
         # run
         for p in policies:
-            if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in accs:
+            if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in res:
                 continue
 
             np.random.seed(rint)
@@ -294,11 +311,9 @@ if __name__ == '__main__':
                 r = controller.run()
 
             # store
-            accs[p['name']].append(r['accuracies'])
-
-            res[p['name'],i] = r
+            res[p['name']].append(r)
 
         # overwrite results in each iter
-        save_results(res_path, exp_name, res, accs)
+        save_results(res_path, exp_name, res)
 
 

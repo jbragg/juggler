@@ -79,6 +79,10 @@ class Controller():
         self.init_observations()
         self.time_elapsed = 0
 
+        self.votes_hist = []
+        self.posteriors_hist = []
+        self.accuracies = []
+
 
 
     def init_observations(self):
@@ -756,7 +760,7 @@ class Controller():
         return votes_back
 
 
-    def update_and_score(self):
+    def update_and_score(self, votes):
         self.update_posteriors()
 
         n_observed = len(self.get_votes('observed'))
@@ -765,6 +769,14 @@ class Controller():
         self.accuracies.append({'observed': n_observed,
                                 'time': self.time_elapsed,
                                 'score': score})
+
+        self.posteriors_hist.append({'observed': n_observed,
+                                     'time': self.time_elapsed,
+                                     'posterior': self.posteriors.copy()})
+
+        self.votes_hist.append(votes)
+
+
 
 
     def score(self, metric='accuracy'):
@@ -786,6 +798,14 @@ class Controller():
         self.probs = self.allprobs(self.params['skills'],
                                    self.params['difficulties'])
                    
+    def get_results(self):
+        return {"votes": self.votes_hist,
+                "posteriors": self.posteriors_hist,
+                "accuracies": self.accuracies,
+                "gt_difficulties": self.gt_difficulties,
+                "gt_skills": self.gt_skills}
+
+
 
     def run_offline(self):
         assert self.known_difficulty
@@ -796,35 +816,28 @@ class Controller():
         print 'RUNNING OFFLINE'
         print 'Policy: {0}'.format(policy)
 
-        self.accuracies = []
-        self.update_and_score()
+        self.update_and_score(votes=[])
 
         for depth in xrange(self.num_questions):
             self.reset()
-            votes = self.select_votes_offline(depth+1)
+            next_votes = self.select_votes_offline(depth+1)
 
             # make observations and update
-            self.observe(votes, float('inf'))  # BUG: untested
-#            print [len([v for v in votes if v[0]==w]) for
+            self.observe(next_votes, float('inf'))  # BUG: untested
+#            print [len([v for v in next_votes if v[0]==w]) for
 #                   w in xrange(self.num_workers)]
 #            print np.sum(self.observations != -1)
-            self.update_and_score()
+            self.update_and_score(votes=next_votes)
 
-        return {'accuracies': self.accuracies}
+        return self.get_results()
 
 
     def run(self):
         policy = self.method
         print 'Policy: {0}'.format(policy)
         self.reset()
-        self.accuracies = []
-        posteriors = []
-        votes = []
 
-        votes.append([])
-        self.update_and_score()
-        posteriors.append(self.posteriors)
-
+        self.update_and_score(votes=[])
 
 
         while len(self.get_votes('unobserved')) > 0:
@@ -836,10 +849,8 @@ class Controller():
 
             # make observations and update
             votes_back = self.observe(next_votes)
-            votes.append(votes_back)
             if votes_back:
-                self.update_and_score()
-                posteriors.append(self.posteriors)
+                self.update_and_score(votes=next_votes)
             
 
 
@@ -849,11 +860,7 @@ class Controller():
 #        print "**************"
 #        print
 
-        return {"votes": votes,
-                "belief": posteriors,
-                "accuracies": self.accuracies,
-                "gt_difficulties": self.gt_difficulties,
-                "gt_skills": self.gt_skills}
+        return self.get_results()
 
 
 

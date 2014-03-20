@@ -2,7 +2,7 @@
 "n_workers": "4",
 "n_questions": "10",
 "sample": "True",
-"n_exps": "200",
+"n_exps": "10",
 
 "skill": {"mean": "0.7936",
           "std": "0.2"},
