@@ -12,6 +12,7 @@ import random
 import pickle
 import heapq
 import sys
+import operator
 import csv
 from ut import dbeta
 import json
@@ -469,15 +470,14 @@ class Controller():
                 print 'Remaining workers: {}'.format(sorted(remaining_workers))
                 break
 
+            max_w,_ = min(candidates, key=lambda x: self.params['skills'][x[0]])
+            min_w,_ = max(candidates, key=lambda x: self.params['skills'][x[0]])
+
 
             # BUG: assumes uses best known skill (GT or MAP)
             if policy == 'greedy' or policy == 'accgain':
-                max_w,_ = min(candidates,
-                              key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == max_w]
             elif policy == 'greedy_reverse' or policy == 'accgain_reverse':
-                min_w,_ = max(candidates,
-                              key=lambda x: self.params['skills'][x[0]])
                 candidates = [c for c in candidates if c[0] == min_w]
             #print "candidates: " + str(candidates)
 
@@ -566,6 +566,20 @@ class Controller():
 #                q_sel = max(q_opt, key=lambda x: q_remaining[x])
 #                l = [(w,q) for w,q in candidates if q == q_sel]
 #                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
+            elif policy == 'uncertainty':
+                assert self.known_difficulty and self.known_skill
+                candidates = [c for c in candidates if c[0] == max_w]
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                v = max((((w,q),q_in_acc[q],np.abs(self.posteriors[q]-0.5)) for
+                         w,q in candidates),
+                        key=operator.itemgetter(1,2))
+                acc.append(v[0])
+
+                acc.append((w_sel,q_sel))
+
             else:
                 raise Exception('Undefined policy')
 
