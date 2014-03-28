@@ -578,7 +578,6 @@ class Controller():
                         key=operator.itemgetter(1,2))
                 acc.append(v[0])
 
-                acc.append((w_sel,q_sel))
 
             else:
                 raise Exception('Undefined policy')
