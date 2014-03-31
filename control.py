@@ -573,7 +573,7 @@ class Controller():
                 for w,q in acc:
                     q_in_acc[q] = 1
 
-                v = max((((w,q),q_in_acc[q],np.abs(self.posteriors[q]-0.5)) for
+                v = min((((w,q),q_in_acc[q],np.abs(self.posteriors[q]-0.5)) for
                          w,q in candidates),
                         key=operator.itemgetter(1,2))
                 acc.append(v[0])
