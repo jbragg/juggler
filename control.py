@@ -837,11 +837,11 @@ class Controller():
             next_votes = self.select_votes_offline(depth+1)
 
             # make observations and update
-            self.observe(next_votes, float('inf'))  # BUG: untested
+            votes_back = self.observe(next_votes, float('inf')) # BUG: untested
 #            print [len([v for v in next_votes if v[0]==w]) for
 #                   w in xrange(self.num_workers)]
 #            print np.sum(self.observations != -1)
-            self.update_and_score(votes=next_votes)
+            self.update_and_score(votes=votes_back)
 
         return self.get_results()
 
@@ -864,7 +864,7 @@ class Controller():
             # make observations and update
             votes_back = self.observe(next_votes)
             if votes_back:
-                self.update_and_score(votes=next_votes)
+                self.update_and_score(votes=votes_back)
             
 
 
