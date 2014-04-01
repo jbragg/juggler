@@ -712,6 +712,7 @@ class Controller():
             pA1 = np.log(self.posteriors[rel_q])
             pA0 = np.log(1-self.posteriors[rel_q])
 
+            # NOTE: only adds votes in tup corresponding to acc (not x)
             for ind,v in zip(rel_acc,tup):
                 if v:
                     pA1 += np.log(self.probs[ind])
@@ -734,7 +735,7 @@ class Controller():
             # weight
             pAX = np.logaddexp(pAX0,pAX1)
 
-            new_prob = np.exp(pAX1 - pAX)
+            new_prob = np.exp(pAX1-pAX)
             accuracy_new = max(new_prob, 1-new_prob)
 
 #            print 'v(before)={}'.format(accgain)
@@ -743,7 +744,11 @@ class Controller():
 #            print 'v(after)={}'.format(accgain)
 #        print 'final: {}'.format(accgain)
 
-        return accgain
+        assert accgain > -.000001
+        print 'accgain {}: {}'.format(x,accgain)
+
+
+        return max(accgain,0)
 
 
 
