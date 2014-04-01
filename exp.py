@@ -97,7 +97,7 @@ def save_results(res_path, exp_name, res):
                           d in r['posteriors']] for
                          r in res[p]]) for p in res)
 
-    
+    markers = itertools.cycle('>^+*')   
     for a,t in ((accs,''), (exp_accs,'exp')):
         policies = a.keys()
         scores = defaultdict(dict)
@@ -126,12 +126,15 @@ def save_results(res_path, exp_name, res):
                         stderr = [x * 1.96 for x in stderr]
 
                     # plot with error bars
+                    next_marker = markers.next()
+
                     plt.figure(0)
-                    plt.errorbar(x_val, mean, yerr=stderr, label=p)
+                    plt.errorbar(x_val, mean, yerr=stderr,
+                                 marker=next_marker, label=p)
 
                     # plot without 
                     plt.figure(1)
-                    plt.plot(x_val, mean, label=p)
+                    plt.plot(x_val, mean, marker=next_marker, label=p)
 
                     # to file
                     if stderr is None:
