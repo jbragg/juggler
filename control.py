@@ -84,6 +84,7 @@ class Controller():
         self.votes_hist = []
         self.posteriors_hist = []
         self.accuracies = []
+        self.worker_finished = dict()
 
 
 
@@ -467,7 +468,7 @@ class Controller():
             candidates = [(w,q) for w,q in unassigned_votes if
                           w not in workers_in_acc]
 
-            # no more votes remain unassigned for any workers, so break
+            # no more votes remain unassigned for some workers, so break
             if not candidates:
                 remaining_workers = workers_in_acc
                 print 'Remaining workers: {}'.format(sorted(remaining_workers))
@@ -763,7 +764,7 @@ class Controller():
 #        print 'final: {}'.format(accgain)
 
         assert accgain > -.000001
-        print 'accgain {}: {}'.format(x,accgain)
+        # print 'accgain {}: {}'.format(x,accgain)
 
 
         return max(accgain,0)
@@ -803,10 +804,8 @@ class Controller():
         accuracy, exp_accuracy = self.score()
         
         def keys_to_str(d):
-            return dict(('{},{}'.format(*k), d[k]) for
-                        k in d)
+            return dict(('{},{}'.format(*k), d[k]) for k in d)
         
-        # new method
         self.hist.append({'observed': n_observed,
                           'time': self.time_elapsed,
                           'votes': keys_to_str(votes),
@@ -821,18 +820,16 @@ class Controller():
                 d['selected'] = '{},{}'.format(*d['selected'])
                 d['set'] = ['{},{}'.format(*t) for t in d['set']]
             self.hist[-1]['alternatives'] = vote_alts
-
-        # old method
-        # self.accuracies.append({'observed': n_observed,
-        #                         'time': self.time_elapsed,
-        #                         'score': accuracy})
-        # 
-        # self.posteriors_hist.append({'observed': n_observed,
-        #                              'time': self.time_elapsed,
-        #                              'posterior': self.posteriors.copy()})
-        # 
-        # self.votes_hist.append(votes)
-
+        
+        
+        workers = set(xrange(self.num_workers))
+        workers_remaining = set(w for w,q in self.get_votes('unobserved'))        
+        workers_finishing = workers.difference(workers_remaining).difference(
+                                                set(self.worker_finished))
+        for w in workers_finishing:
+            self.worker_finished[w] = {'observed': n_observed,
+                                       'time': self.time_elapsed,
+                                       'skill': 1/self.gt_skills[w]}
 
 
 
@@ -859,7 +856,8 @@ class Controller():
     def get_results(self):
         return {"gt_difficulties": self.gt_difficulties,
                 "gt_skills": self.gt_skills,
-                "hist": self.hist}
+                "hist": self.hist,
+                "when_finished": self.worker_finished}
 
 
 

@@ -89,6 +89,10 @@ def save_results(res_path, exp_name, res):
     with open(os.path.join(res_path, 'res.json'), 'w') as f:
         json.dump(hist, f, indent=1)
 
+    with open(os.path.join(res_path, 'when_finished.json'), 'w') as f:
+        json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
+                  f, indent=1)
+
 
     markers = itertools.cycle('>^+*')   
     for t in ('accuracy','exp_accuracy'):
