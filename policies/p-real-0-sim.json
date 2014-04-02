@@ -17,11 +17,6 @@
  "known_d": "True",
  "known_s": "True"
 },
-{"name": "Round robin",
- "type": "rr",
- "known_d": "True",
- "known_s": "True"
-},
 {"name": "Round robin match",
  "type": "rr_match",
  "known_d": "True",
