@@ -80,6 +80,7 @@ class Controller():
         self.init_observations()
         self.time_elapsed = 0
 
+        self.hist = []
         self.votes_hist = []
         self.posteriors_hist = []
         self.accuracies = []
@@ -458,8 +459,10 @@ class Controller():
         unassigned_votes = self.get_votes('unassigned')
         acc = assigned_votes
 
+        # store values considered when making decisions
+        alternatives = []
+
         while len(acc) < self.num_workers:
-            evals = {}
             workers_in_acc = [w for w,q in acc]
             candidates = [(w,q) for w,q in unassigned_votes if
                           w not in workers_in_acc]
@@ -482,23 +485,35 @@ class Controller():
             #print "candidates: " + str(candidates)
 
             if policy == 'greedy' or policy == 'greedy_reverse':
-                for c in candidates:
-                    evals[c] = self.hXA(acc, c) - self.hXU(acc, c)
+                evals = dict((c, self.hXA(acc, c) - self.hXU(acc, c)) for
+                             c in candidates)
                         
-                acc.append(max(evals, key=lambda k:evals[k]))
+                top = max(evals, key=lambda k:evals[k])
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
 
             elif policy == 'accgain' or policy == 'accgain_reverse':
-                for c in candidates:
-                    evals[c] = self.acc_gain(acc, c)
+                evals = dict((c, self.acc_gain(acc, c)) for
+                             c in candidates)
+                
 
-                acc.append(max(evals, key=lambda k:evals[k]))
+                top = max(evals, key=lambda k:evals[k])
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
 
             elif policy == 'greedy_ent':
-                # BUG: doesn't use lazy eval 
-                for c in candidates:
-                    evals[c] = self.hXA(acc, c)
+                evals = dict((c, self.hXA(acc, c)) for
+                             c in candidates)
 
-                acc.append(max(evals, key=lambda k:evals[k]))
+                top = max(evals, key=lambda k:evals[k])
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
 
             elif policy == 'local_s':
                 # Use local search to select argmin H(U|A)
@@ -507,6 +522,7 @@ class Controller():
             elif policy == 'random':
 #                print 'candidates: {}'.format(candidates)
                 acc.append(random.choice(candidates))
+                
             elif policy == 'same_question':
                 q_in_acc = set(q for w,q in acc)
                 opts = [(w,q) for w,q in candidates if q in q_in_acc]
@@ -514,6 +530,7 @@ class Controller():
                     acc.append(random.choice(opts))
                 else:
                     acc.append(random.choice(candidates))
+                    
             elif policy == 'rr':
                 q_remaining = np.sum(self.observations == -1, 0)
                 for w,q in acc:
@@ -533,6 +550,7 @@ class Controller():
                 # random worker for selected question
                 w_sel = random.choice([w for w,q in candidates if q == q_sel])
                 acc.append((w_sel,q_sel))
+                
             elif policy == 'rr_match':
                 assert self.known_difficulty and self.known_skill
                 q_remaining = np.sum(self.observations == -1, 0)
@@ -566,6 +584,7 @@ class Controller():
 #                q_sel = max(q_opt, key=lambda x: q_remaining[x])
 #                l = [(w,q) for w,q in candidates if q == q_sel]
 #                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
+
             elif policy == 'uncertainty':
                 assert self.known_difficulty and self.known_skill
                 candidates = [c for c in candidates if c[0] == max_w]
@@ -578,12 +597,11 @@ class Controller():
                         key=operator.itemgetter(1,2))
                 acc.append(v[0])
 
-
             else:
                 raise Exception('Undefined policy')
 
 #        print "Lazy evaluations saved: {}".format(num_skipped)
-        return acc
+        return acc, alternatives
 
     # compute H(X | U)
     def hXU(self, acc, x):
@@ -778,21 +796,42 @@ class Controller():
         return votes_back
 
 
-    def update_and_score(self, votes):
+    def update_and_score(self, votes, vote_alts=None):
         self.update_posteriors()
 
         n_observed = len(self.get_votes('observed'))
-        score = self.score()
+        accuracy, exp_accuracy = self.score()
+        
+        def keys_to_str(d):
+            return dict(('{},{}'.format(*k), d[k]) for
+                        k in d)
+        
+        # new method
+        self.hist.append({'observed': n_observed,
+                          'time': self.time_elapsed,
+                          'votes': keys_to_str(votes),
+                          'accuracy': accuracy,
+                          'exp_accuracy': exp_accuracy,
+                          'posterior': self.posteriors.tolist()})
+                          
+        if vote_alts:
+            # NOTE: modifying vote_alts (side effects)
+            for d in vote_alts:
+                d['heuristic'] = keys_to_str(d['heuristic'])
+                d['selected'] = '{},{}'.format(*d['selected'])
+                d['set'] = ['{},{}'.format(*t) for t in d['set']]
+            self.hist[-1]['alternatives'] = vote_alts
 
-        self.accuracies.append({'observed': n_observed,
-                                'time': self.time_elapsed,
-                                'score': score})
-
-        self.posteriors_hist.append({'observed': n_observed,
-                                     'time': self.time_elapsed,
-                                     'posterior': self.posteriors.copy()})
-
-        self.votes_hist.append(votes)
+        # old method
+        # self.accuracies.append({'observed': n_observed,
+        #                         'time': self.time_elapsed,
+        #                         'score': accuracy})
+        # 
+        # self.posteriors_hist.append({'observed': n_observed,
+        #                              'time': self.time_elapsed,
+        #                              'posterior': self.posteriors.copy()})
+        # 
+        # self.votes_hist.append(votes)
 
 
 
@@ -800,10 +839,11 @@ class Controller():
     def score(self, metric='accuracy'):
         """Return average score for posterior predictions"""
 
-        correct = np.round(self.posteriors) == self.gt_labels
+        accuracy = np.mean(np.round(self.posteriors) == self.gt_labels)
+        exp_accuracy = np.mean([max(x, 1-x) for x in self.posteriors])
 
         if metric == 'accuracy':
-            return np.sum(correct) / len(correct)
+            return accuracy, exp_accuracy
         else:
             raise Exception('Undefined score metric')
 
@@ -817,11 +857,9 @@ class Controller():
                                    self.params['difficulties'])
                    
     def get_results(self):
-        return {"votes": self.votes_hist,
-                "posteriors": self.posteriors_hist,
-                "accuracies": self.accuracies,
-                "gt_difficulties": self.gt_difficulties,
-                "gt_skills": self.gt_skills}
+        return {"gt_difficulties": self.gt_difficulties,
+                "gt_skills": self.gt_skills,
+                "hist": self.hist}
 
 
 
@@ -863,12 +901,13 @@ class Controller():
                     len(self.get_votes('unobserved')))
 
             # select votes
-            next_votes = self.select_votes()
+            next_votes, alternatives = self.select_votes()
 
             # make observations and update
             votes_back = self.observe(next_votes)
             if votes_back:
-                self.update_and_score(votes=votes_back)
+                self.update_and_score(votes=votes_back,
+                                      vote_alts=alternatives)
             
 
 

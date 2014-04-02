@@ -47,15 +47,15 @@ def est_final_params(gt_observations):
         
 
 
-def agg_scores(accs, x='observed'):
+def agg_scores(accs, x='observed', y='accuracy'):
     """Takes accuracies and computes averages and standard errors"""
     if len(accs) == 1:
-        return [(d[x], d['score'], None) for d in accs[0]]
+        return [(d[x], d[y], None) for d in accs[0]]
 
     points = []
 
     def next_point(scores):
-        vals = [scores[i]['score'] for i in scores]
+        vals = [scores[i][y] for i in scores]
         max_x = max(scores[i][x] for i in scores)
         return (max_x, np.mean(vals), stats.sem(vals, ddof=0))
 
@@ -84,32 +84,25 @@ def agg_scores(accs, x='observed'):
     return points
 
 def save_results(res_path, exp_name, res):
-    # accuracies
-    accs = dict((p, [x['accuracies'] for x in res[p]]) for p in res)
+    hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
+    
+    with open(os.path.join(res_path, 'res.json'), 'w') as f:
+        json.dump(hist, f, indent=1)
 
-    # expected accuracies
-    def posterior_to_exp_acc(posterior):
-        return np.mean([max(x, 1-x) for x in posterior])
-
-    exp_accs = dict((p, [[{'observed': d['observed'],
-                           'time': d['time'],
-                           'score': posterior_to_exp_acc(d['posterior'])} for
-                          d in r['posteriors']] for
-                         r in res[p]]) for p in res)
 
     markers = itertools.cycle('>^+*')   
-    for a,t in ((accs,''), (exp_accs,'exp')):
-        policies = a.keys()
+    for t in ('accuracy','exp_accuracy'):
+        policies = hist.keys()
         scores = defaultdict(dict)
         for p in policies:
             #assert a[p].shape[1] == NUM_QUESTIONS + 1
-            scores['votes'][p] = agg_scores(a[p],'observed')
-            scores['time'][p] = agg_scores(a[p],'time')
+            scores['votes'][p] = agg_scores(hist[p],'observed',t)
+            scores['time'][p] = agg_scores(hist[p],'time',t)
 
         # create figures and save data
         for x_type in scores:
             fname = 'plot_{}'.format(x_type)
-            if t == 'exp':
+            if t == 'exp_accuracy':
                 fname = 'exp_' + fname
 
             plt.close('all')
