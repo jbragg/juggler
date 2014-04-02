@@ -81,6 +81,7 @@ class Controller():
         self.time_elapsed = 0
 
         self.hist = []
+        self.hist_detailed = []
         self.votes_hist = []
         self.posteriors_hist = []
         self.accuracies = []
@@ -808,10 +809,14 @@ class Controller():
         
         self.hist.append({'observed': n_observed,
                           'time': self.time_elapsed,
-                          'votes': keys_to_str(votes),
                           'accuracy': accuracy,
                           'exp_accuracy': exp_accuracy,
                           'posterior': self.posteriors.tolist()})
+
+        self.hist_detailed.append({'observed': n_observed,
+                                   'time': self.time_elapsed,
+                                   'votes': keys_to_str(votes)})
+
                           
         if vote_alts:
             # NOTE: modifying vote_alts (side effects)
@@ -819,7 +824,7 @@ class Controller():
                 d['heuristic'] = keys_to_str(d['heuristic'])
                 d['selected'] = '{},{}'.format(*d['selected'])
                 d['set'] = ['{},{}'.format(*t) for t in d['set']]
-            self.hist[-1]['alternatives'] = vote_alts
+            self.hist_detailed[-1]['alternatives'] = vote_alts
         
         
         workers = set(xrange(self.num_workers))
@@ -854,9 +859,10 @@ class Controller():
                                    self.params['difficulties'])
                    
     def get_results(self):
-        return {"gt_difficulties": self.gt_difficulties,
-                "gt_skills": self.gt_skills,
+        return {"gt_difficulties": self.gt_difficulties.tolist(),
+                "gt_skills": self.gt_skills.tolist(),
                 "hist": self.hist,
+                "hist_detailed": self.hist_detailed,
                 "when_finished": self.worker_finished}
 
 

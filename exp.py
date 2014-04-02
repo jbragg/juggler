@@ -83,12 +83,19 @@ def agg_scores(accs, x='observed', y='accuracy'):
 
     return points
 
+def save_iteration(res_path, p, i, res):
+    with open(os.path.join(res_path,
+                           'details - {} - {}.json'.format(p,i)), 'w') as f:
+        json.dump(res, f, indent=1)
+
+
+
 def save_results(res_path, exp_name, res):
     hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
     
-    for p in hist:
+    for p in res:
         with open(os.path.join(res_path, 'res - {}.json'.format(p)), 'w') as f:
-            json.dump(hist[p], f, indent=1)
+            json.dump(res[p], f, indent=1)
 
     with open(os.path.join(res_path, 'when_finished.json'), 'w') as f:
         json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
@@ -245,6 +252,7 @@ if __name__ == '__main__':
     mkdir_or_ignore('res')
     res_path = os.path.join('res',exp_name)
     mkdir_or_ignore(res_path)
+    mkdir_or_ignore(os.path.join(res_path,'detailed'))
    
     # copy policy file
     import shutil
@@ -312,9 +320,11 @@ if __name__ == '__main__':
                 r = controller.run()
 
             # store
+            hist_detailed = r.pop('hist_detailed')
+            if i < 5:
+                save_iteration(os.path.join(res_path,'detailed'),
+                               p['name'], i, hist_detailed)
             res[p['name']].append(r)
 
         # overwrite results in each iter
         save_results(res_path, exp_name, res)
-
-
