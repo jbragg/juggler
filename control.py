@@ -470,8 +470,8 @@ class Controller():
 
             # no more votes remain unassigned for some workers, so break
             if not candidates:
-                remaining_workers = workers_in_acc
-                print 'Remaining workers: {}'.format(sorted(remaining_workers))
+                # remaining_workers = workers_in_acc
+                # print 'Remaining workers: {}'.format(sorted(remaining_workers))
                 break
 
             max_w,_ = min(candidates, key=lambda x: self.params['skills'][x[0]])

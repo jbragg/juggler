@@ -86,8 +86,9 @@ def agg_scores(accs, x='observed', y='accuracy'):
 def save_results(res_path, exp_name, res):
     hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
     
-    with open(os.path.join(res_path, 'res.json'), 'w') as f:
-        json.dump(hist, f, indent=1)
+    for p in hist:
+        with open(os.path.join(res_path, 'res - {}.json'.format(p)), 'w') as f:
+            json.dump(hist[p], f, indent=1)
 
     with open(os.path.join(res_path, 'when_finished.json'), 'w') as f:
         json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
