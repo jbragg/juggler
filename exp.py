@@ -102,7 +102,9 @@ def save_results(res_path, exp_name, res):
                   f, indent=1)
 
 
-    markers = itertools.cycle('>^+*')   
+    # markers = itertools.cycle('>^+*')   
+    markers = itertools.repeat(None)   
+    
     for t in ('accuracy','exp_accuracy'):
         policies = hist.keys()
         scores = defaultdict(dict)
