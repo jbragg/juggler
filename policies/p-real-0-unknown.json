@@ -27,6 +27,11 @@
  "known_d": "False",
  "known_s": "True"
 },
+{"name": "Round robin (unknown_d)",
+ "type": "rr",
+ "known_d": "False",
+ "known_s": "True"
+},
 {"name": "Random",
  "type": "random",
  "known_d": "True",
