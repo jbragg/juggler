@@ -307,14 +307,17 @@ if __name__ == '__main__':
             if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in res:
                 continue
 
+            for s in (p['known_d'],p['known_s']):
+                assert s == 'True' or s == 'False'
+
             np.random.seed(rint)
             platform.reset()
             controller = Controller(method=p['type'],
                                     platform=platform,
                                     num_workers=n_workers,
                                     num_questions=n_questions,
-                                    known_d=p['known_d'],
-                                    known_s=p['known_s'])
+                                    known_d=eval(p['known_d']),
+                                    known_s=eval(p['known_s']))
                                     
             if 'offline' in p:
                 r = controller.run_offline()

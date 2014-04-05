@@ -214,7 +214,7 @@ class Controller():
                     elif not known_s and known_d:
                         skills = params_array
                         difficulties = self.gt_difficulties
-                    else: 
+                    else:  # both skill and difficulty unknown
                         difficulties = params_array[:self.num_questions]
                         skills = params_array[self.num_questions:]
 
@@ -859,8 +859,8 @@ class Controller():
                                    self.params['difficulties'])
                    
     def get_results(self):
-        return {"gt_difficulties": self.gt_difficulties.tolist(),
-                "gt_skills": self.gt_skills.tolist(),
+        return {"gt_difficulties": self.platform.gt_difficulties.tolist(),
+                "gt_skills": self.platform.gt_skills.tolist(),
                 "hist": self.hist,
                 "hist_detailed": self.hist_detailed,
                 "when_finished": self.worker_finished}
@@ -903,6 +903,11 @@ class Controller():
         while len(self.get_votes('unobserved')) > 0:
             print 'Remaining votes: {0:4d}'.format(
                     len(self.get_votes('unobserved')))
+
+            #            if not self.known_difficulty:
+            #    #                print self.params['difficulties']
+            #    print np.mean(np.abs(self.params['difficulties'] - \
+                    #                         self.platform.gt_difficulties))
 
             # select votes
             next_votes, alternatives = self.select_votes()
