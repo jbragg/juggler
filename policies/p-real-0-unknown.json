@@ -22,13 +22,13 @@
  "known_d": "False",
  "known_s": "True"
 },
-{"name": "Random",
+{"name": "Random (unknown_d)",
  "type": "random",
- "known_d": "True",
+ "known_d": "False",
  "known_s": "True"
 },
-{"name": "Round robin match",
- "type": "rr_match",
+{"name": "Random",
+ "type": "random",
  "known_d": "True",
  "known_s": "True"
 },
@@ -40,11 +40,6 @@
 {"name": "Accgain reverse",
  "type": "accgain_reverse",
  "known_d": "True",
- "known_s": "True"
-},
-{"name": "Accgain reverse (unknown_d)",
- "type": "accgain_reverse",
- "known_d": "False",
  "known_s": "True"
 }
 

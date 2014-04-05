@@ -855,6 +855,7 @@ class Controller():
         self.posteriors = posteriors
 
 
+        # MAP estimate
         self.probs = self.allprobs(self.params['skills'],
                                    self.params['difficulties'])
                    
