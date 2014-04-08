@@ -508,7 +508,7 @@ class Controller():
                                      'heuristic': evals.copy()})
 
             elif policy == 'accgain' or policy == 'accgain_reverse':
-                evals = dict((c, self.acc_gain(acc, c)) for
+                evals = dict((c, self.acc_gain(acc, [c])) for
                              c in candidates)
                 
 
@@ -730,53 +730,66 @@ class Controller():
         return hXA
 
     def acc_gain(self, acc, x):
-        """Exact expected accuracy gain (change to sampling if slow)"""
+        """Exact expected accuracy gain (change to sampling if slow)
+
+        x is a list of votes to add, acc is a list of votes already being
+        asked"""
         # NOTE: compute locally for a question since worker skill known
+
         accgain = 0
 
-        rel_q = x[1]
-        rel_acc = [(w,q) for w,q in acc if q == rel_q]
+        rel_q = set(q for w,q in x)
+        for cur_q in rel_q:
+            rel_acc = [(w,q) for w,q in acc if q == cur_q]
+
+            rel_x = [(w,q) for w,q in x if q == cur_q]
+
+            for tup in itertools.product(*([0,1] for
+                                           x in xrange(len(rel_acc) + \
+                                                       len(rel_x)))):
+                # NOTE: changed this to log (different from hXA above)
+                pA1 = np.log(self.posteriors[cur_q])
+                pA0 = np.log(1-self.posteriors[cur_q])
+
+                # NOTE: only adds votes in tup corresponding to acc (not x)
+                for ind,v in zip(rel_acc,tup):
+                    if v:
+                        pA1 += np.log(self.probs[ind])
+                        pA0 += np.log(1-self.probs[ind])
+                    else:
+                        pA1 += np.log(1-self.probs[ind])
+                        pA0 += np.log(self.probs[ind])
+
+                # log P(a)
+                pA = np.logaddexp(pA1,pA0)
+                accuracy_old = max(np.exp(pA1-pA), np.exp(pA0-pA))
+
+                pAX1 = pA1
+                pAX0 = pA0
+
+                for ind,v in zip(rel_x,tup[len(rel_acc):]):
+                    if v:
+                        pAX1 += np.log(self.probs[ind])
+                        pAX0 += np.log(1-self.probs[ind])
+                    else:
+                        pAX1 += np.log(1-self.probs[ind])
+                        pAX0 += np.log(self.probs[ind])
 
 
-        for tup in itertools.product(*([0,1] for x in xrange(len(rel_acc)+1))):
-            # NOTE: changed this to log (different from hXA above)
-            pA1 = np.log(self.posteriors[rel_q])
-            pA0 = np.log(1-self.posteriors[rel_q])
+                # weight
+                pAX = np.logaddexp(pAX0,pAX1)
 
-            # NOTE: only adds votes in tup corresponding to acc (not x)
-            for ind,v in zip(rel_acc,tup):
-                if v:
-                    pA1 += np.log(self.probs[ind])
-                    pA0 += np.log(1-self.probs[ind])
-                else:
-                    pA1 += np.log(1-self.probs[ind])
-                    pA0 += np.log(self.probs[ind])
-
-            # log P(a)
-            pA = np.logaddexp(pA1,pA0)
-            accuracy_old = max(np.exp(pA1-pA), np.exp(pA0-pA))
-
-            if tup[-1]:
-                pAX1 = pA1 + np.log(self.probs[x])
-                pAX0 = pA0 + np.log(1-self.probs[x])
-            else:
-                pAX0 = pA0 + np.log(self.probs[x])
-                pAX1 = pA1 + np.log(1-self.probs[x])
-
-            # weight
-            pAX = np.logaddexp(pAX0,pAX1)
-
-            new_prob = np.exp(pAX1-pAX)
-            accuracy_new = max(new_prob, 1-new_prob)
+                new_prob = np.exp(pAX1-pAX)
+                accuracy_new = max(new_prob, 1-new_prob)
 
 #            print 'v(before)={}'.format(accgain)
 #            print '{} * {}'.format(np.exp(pAX), accuracy_new - accuracy_old)
-            accgain += np.exp(pAX) * (accuracy_new - accuracy_old)
+                accgain += np.exp(pAX) * (accuracy_new - accuracy_old)
 #            print 'v(after)={}'.format(accgain)
 #        print 'final: {}'.format(accgain)
 
         assert accgain > -.000001
-        # print 'accgain {}: {}'.format(x,accgain)
+        print 'accgain {}: {}'.format(x,accgain)
 
 
         return max(accgain,0)
