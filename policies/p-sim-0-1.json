@@ -18,8 +18,8 @@
  "known_d": "True",
  "known_s": "True"
 },
-{"name": "Round robin",
- "type": "rr",
+{"name": "Round robin match",
+ "type": "rr_match",
  "known_d": "True",
  "known_s": "True"
 },
@@ -42,6 +42,12 @@
  "type": "accgain_reverse",
  "known_d": "True",
  "known_s": "True"
+},
+{"name": "Uncertainty",
+ "type": "uncertainty",
+  "known_d": "True",
+   "known_s": "True"
 }
+
 ]
 }
