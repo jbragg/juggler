@@ -326,9 +326,9 @@ if __name__ == '__main__':
 
             # store
             hist_detailed = r.pop('hist_detailed')
-            if i < 5:
-                save_iteration(os.path.join(res_path,'detailed'),
-                               p['name'], i, hist_detailed)
+#            if i < 5:
+#                save_iteration(os.path.join(res_path,'detailed'),
+#                               p['name'], i, hist_detailed)
             res[p['name']].append(r)
 
         # overwrite results in each iter

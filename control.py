@@ -391,12 +391,14 @@ class Controller():
         true_votes = (observations == 1)   
         false_votes = (observations == 0)   
 
+        # log P(U = true,  votes)
         ptrue = np.log(priors) + np.sum(np.log(probs) * true_votes, 0) + \
                                  np.sum(np.log(1-probs) * false_votes, 0)
+        # log P(U = false,  votes)
         pfalse = np.log(1-priors) + np.sum(np.log(probs) * false_votes, 0) + \
                                     np.sum(np.log(1-probs) * true_votes, 0)
 
-
+        # log P(U = true | votes)
         norm = np.logaddexp(ptrue, pfalse)
 
         return np.exp(ptrue) / np.exp(norm), np.sum(norm)
@@ -487,6 +489,15 @@ class Controller():
             #print "candidates: " + str(candidates)
 
             if policy == 'greedy' or policy == 'greedy_reverse':
+                # make sure ask once about each question
+                q_asked = np.sum(self.observations != -1, 0)
+                for w,q in acc:
+                    q_asked[q] += 1
+
+                if any(q_asked == 0):
+                    candidates = [c for c in candidates if q_asked[c[1]] == 0]
+
+                # same as before
                 evals = dict((c, self.hXA(acc, c) - self.hXU(acc, c)) for
                              c in candidates)
                         
@@ -813,18 +824,18 @@ class Controller():
                           'exp_accuracy': exp_accuracy,
                           'posterior': self.posteriors.tolist()})
 
-        self.hist_detailed.append({'observed': n_observed,
-                                   'time': self.time_elapsed,
-                                   'votes': keys_to_str(votes)})
+#        self.hist_detailed.append({'observed': n_observed,
+#                                   'time': self.time_elapsed,
+#                                   'votes': keys_to_str(votes)})
 
                           
-        if vote_alts:
-            # NOTE: modifying vote_alts (side effects)
-            for d in vote_alts:
-                d['heuristic'] = keys_to_str(d['heuristic'])
-                d['selected'] = '{},{}'.format(*d['selected'])
-                d['set'] = ['{},{}'.format(*t) for t in d['set']]
-            self.hist_detailed[-1]['alternatives'] = vote_alts
+#        if vote_alts:
+#            # NOTE: modifying vote_alts (side effects)
+#            for d in vote_alts:
+#                d['heuristic'] = keys_to_str(d['heuristic'])
+#                d['selected'] = '{},{}'.format(*d['selected'])
+#                d['set'] = ['{},{}'.format(*t) for t in d['set']]
+#            self.hist_detailed[-1]['alternatives'] = vote_alts
         
         
         workers = set(xrange(self.num_workers))
