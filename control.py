@@ -789,7 +789,7 @@ class Controller():
 #        print 'final: {}'.format(accgain)
 
         assert accgain > -.000001
-        print 'accgain {}: {}'.format(x,accgain)
+#        print 'accgain {}: {}'.format(x,accgain)
 
 
         return max(accgain,0)
