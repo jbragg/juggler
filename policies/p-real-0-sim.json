@@ -12,12 +12,6 @@
 
 "policies":
 [
-{"name": "Greedy reverse offline",
- "type": "greedy_reverse",
- "known_d": "True",
- "known_s": "True",
- "offline": "True"
-},
 {"name": "Random",
  "type": "random",
  "known_d": "True",
