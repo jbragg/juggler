@@ -904,7 +904,6 @@ class Controller():
         self.update_and_score(votes=[])
 
         for depth in xrange(self.num_questions):
-            self.reset()
             self.platform.reset()
             next_votes = self.select_votes_offline(depth+1)
 
