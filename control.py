@@ -87,6 +87,18 @@ class Controller():
         self.accuracies = []
         self.worker_finished = dict()
 
+    def reset_offline(self):
+        """reset for offline policy"""
+
+        # vote_status = None if unassigned
+        # vote_status = 0 if assigned
+        # vote_status = 1 if observed
+        self.vote_status = dict([((i,j), None) for i,j in itertools.product(
+                                                xrange(self.num_workers),
+                                                xrange(self.num_questions))])
+        self.init_observations()
+
+
 
 
     def init_observations(self):
@@ -904,6 +916,7 @@ class Controller():
         self.update_and_score(votes=[])
 
         for depth in xrange(self.num_questions):
+            self.reset_offline()
             self.platform.reset()
             next_votes = self.select_votes_offline(depth+1)
 
