@@ -4,6 +4,7 @@ simulator for worker responses"""
 from __future__ import division
 import collections
 import itertools
+import random
 import numpy as np
 from ut import sample_dist
 
@@ -20,7 +21,7 @@ class Platform():
     def __init__(self, gt_labels, 
                  votes=None, num_workers=None,
                  skills=None, difficulties=None,
-                 times=None):
+                 times=None, subsample=None):
 
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
@@ -31,7 +32,34 @@ class Platform():
             self.votes = votes
             self.gt_skills = skills
             self.gt_difficulties = difficulties
+            
+            if subsample:
+                assert subsample < self.num_workers
+                workers = sorted(random.sample(range(self.num_workers),subsample))
+                
+                votes_subsample = dict()
+                skills_subsample = np.ones(subsample)
+
+                for i,w in enumerate(workers):
+                    for q in xrange(self.num_questions):
+                        votes_subsample[i,q] = votes[w,q]
+                    
+                    skills_subsample[i] = skills[w]
+                    
+                self.votes = votes_subsample
+                self.gt_skills = skills_subsample
+                
+                self.is_deterministic = False
+                self.num_workers = subsample
+
+                assert len(self.gt_skills) == subsample
+                assert len(self.gt_skills) == len(set(w for w,q in self.votes))
+                                
+                print 'Subsampling workers {}'.format(workers)
+                
+                
         elif num_workers is not None:
+            assert not subsample
             if not isinstance(skills, np.ndarray):
                 skills = skills or ODESK_SKILL_DIST
             if not isinstance(difficulties, np.ndarray):

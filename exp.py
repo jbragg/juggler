@@ -220,6 +220,9 @@ if __name__ == '__main__':
     time_in = val_or_none(s, 'time')
     votes_in = val_or_none(s, 'votes')
     labels_in = val_or_none(s, 'labels')
+    subsample_in = val_or_none(s, 'subsample')
+    if subsample_in:
+        subsample_in = int(subsample_in)
 
     policies = s['policies']
 
@@ -288,7 +291,8 @@ if __name__ == '__main__':
                     difficulties=first_array_or_true([diff_in,
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
-                    skills=first_array_or_true([skill_in, gold.get_skills()]))
+                    skills=first_array_or_true([skill_in, gold.get_skills()]),
+                    subsample=subsample_in)
             run_once = platform.is_deterministic
 #            print run_once
         else:
@@ -315,8 +319,8 @@ if __name__ == '__main__':
             platform.reset()
             controller = Controller(method=p['type'],
                                     platform=platform,
-                                    num_workers=n_workers,
-                                    num_questions=n_questions,
+                                    num_workers=platform.num_workers,
+                                    num_questions=platform.num_questions,
                                     known_d=eval(p['known_d']),
                                     known_s=eval(p['known_s']))
                                     
