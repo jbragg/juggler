@@ -7,7 +7,8 @@
 
 
 "votes": "",
-"diff":"gold",
+"diff": {"type": "beta",
+         "params": [1,1]},
 "skill":{"mean": "0.7936",
          "std": "0.3"},
 "time": "0",
