@@ -1,0 +1,41 @@
+{
+"exp_name": "p-test",
+"n_workers": "10",
+"n_questions": "50",
+"sample": "True",
+"n_exps": "200",
+
+"votes": "",
+"diff": {"type": "beta",
+         "params": [2,2]},
+"skill":{"mean": "0.7936",
+         "std": "0.2861"},
+"time": "0",
+
+
+
+"policies":
+[
+{"name": "Greedy reverse offline",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "offline": "True"
+},
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+}
+]
+}
