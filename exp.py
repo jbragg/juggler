@@ -93,9 +93,10 @@ def save_iteration(res_path, p, i, res):
 def save_results(res_path, exp_name, res):
     hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
     
-    for p in res:
-        with open(os.path.join(res_path, 'res - {}.json'.format(p)), 'w') as f:
-            json.dump(res[p], f, indent=1)
+    # NOTE: turned off to conserve space
+#    for p in res:
+#        with open(os.path.join(res_path, 'res - {}.json'.format(p)), 'w') as f:
+#            json.dump(res[p], f, indent=1)
 
     with open(os.path.join(res_path, 'when_finished.json'), 'w') as f:
         json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
