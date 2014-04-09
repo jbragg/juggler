@@ -97,6 +97,7 @@ class Controller():
                                                 xrange(self.num_workers),
                                                 xrange(self.num_questions))])
         self.init_observations()
+        self.posteriors = 0.5 * np.ones(self.num_questions)
 
 
 
