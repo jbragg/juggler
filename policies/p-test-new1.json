@@ -1,13 +1,12 @@
 {
 "exp_name": "p-test-new1",
 "n_workers": "12",
-"n_questions": "50",
+"n_questions": "198",
 "sample": "True",
 "n_exps": "200",
 
 "votes": "",
-"diff":{"type": "beta",
-        "params": [1,1]},
+"diff": "gold",
 "skill":{"mean": "0.7936",
          "std": "0.1"},
 "time": "0",
