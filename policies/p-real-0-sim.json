@@ -32,6 +32,12 @@
  "known_d": "True",
  "known_s": "True"
 },
+{"name": "Greedy reverse offline",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "Known_s": "True",
+ "offline": "True"
+},
 {"name": "Accgain",
  "type": "accgain",
  "known_d": "True",
