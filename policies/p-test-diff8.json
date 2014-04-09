@@ -1,0 +1,38 @@
+{
+"exp_name": "p-test-diff2",
+"n_workers": "12",
+"n_questions": "198",
+"sample": "True",
+"n_exps": "200",
+
+"votes": "",
+"skill":"gold",
+"diff":{"type": "beta",
+        "params": [8,8]},
+"time": "0",
+
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Uncertainty",
+ "type": "uncertainty",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+}
+]
+}
