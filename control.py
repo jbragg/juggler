@@ -495,9 +495,13 @@ class Controller():
 
 
             # BUG: assumes uses best known skill (GT or MAP)
-            if policy == 'greedy' or policy == 'accgain':
+            if policy in ['greedy',
+                          'accgain',
+                          'uncertainty']:
                 candidates = [c for c in candidates if c[0] == max_w]
-            elif policy == 'greedy_reverse' or policy == 'accgain_reverse':
+            elif policy in ['greedy_reverse',
+                            'accgain_reverse',
+                            'uncertainty_reverse']:
                 candidates = [c for c in candidates if c[0] == min_w]
             #print "candidates: " + str(candidates)
 
@@ -611,9 +615,8 @@ class Controller():
 #                l = [(w,q) for w,q in candidates if q == q_sel]
 #                acc.append(min(l, key=lambda k: self.posteriors[k[1]]))
 
-            elif policy == 'uncertainty':
+            elif policy == 'uncertainty' or policy == 'uncertainty_reverse':
                 assert self.known_difficulty and self.known_skill
-                candidates = [c for c in candidates if c[0] == max_w]
                 q_in_acc = defaultdict(int)
                 for w,q in acc:
                     q_in_acc[q] = 1

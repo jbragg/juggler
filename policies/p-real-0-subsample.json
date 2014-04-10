@@ -53,8 +53,12 @@
  "type": "uncertainty",
  "known_d": "True",
  "known_s": "True"
+},
+{"name": "Uncertainty reverse",
+ "type": "uncertainty_reverse",
+ "known_d": "True",
+ "known_s": "True"
 }
-
 
 
 ]
