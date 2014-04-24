@@ -1,0 +1,41 @@
+{
+"n_workers": "12",
+"n_questions": "50",
+"sample": "True",
+"n_exps": "200",
+
+"type": "kg",
+"votes": "",
+"skill":{"type": "beta",
+         "params": [4,1]},
+"time":"0",
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "False",
+ "known_s": "False"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "False",
+ "known_s": "False"
+},
+{"name": "Uncertainty",
+ "type": "kg_uncertainty",
+ "known_d": "False",
+ "known_s": "False"
+},
+{"name": "Greedy (KG)",
+ "type": "kg_greedy",
+ "known_d": "False",
+ "known_s": "False"
+},
+{"name": "Greedy, unasked (KG)",
+ "type": "kg_greedy_unasked",
+ "known_d": "False",
+ "known_s": "False"
+}
+]
+}

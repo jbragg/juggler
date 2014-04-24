@@ -6,6 +6,7 @@ import numpy as np
 import itertools
 from collections import defaultdict
 from scipy.misc import logsumexp
+from scipy.special import betainc
 import scipy.optimize
 import scipy.stats
 import random
@@ -971,4 +972,296 @@ class Controller():
         return self.get_results()
 
 
+class ControllerKG(Controller):
+    def __init__(self, method,
+                 platform,
+                 num_questions, num_workers,
+                 known_s=True, known_d=True,
+                 sample=True):
 
+        # method can be 'random', 'rr', 'greedy', 'greedy_reverse"
+        self.method = method  
+        self.platform = platform
+
+        self.prior = (2,2) # prior for diff (was prior for diff and label)
+        self.sample = sample
+
+        self.known_difficulty = known_d
+        self.known_skill = known_s
+        self.gt_labels = platform.gt_labels
+
+        if known_s:
+            self.gt_skills = platform.gt_skills
+            assert self.gt_skills is not None
+        else:
+            self.gt_skills = None
+
+        if known_d:
+            self.gt_difficulties = platform.gt_difficulties
+            assert self.gt_difficulties is not None
+        else:
+            self.gt_difficulties = None
+
+
+        self.num_questions = num_questions
+        self.num_workers = num_workers
+
+        # NEW
+        self.params = dict()
+        self.params['skills'] = [(2,1) for w in xrange(num_workers)]
+        self.params['thetas'] = [(1,1) for q in xrange(num_questions)]
+
+
+        
+        # other initialization
+        self.reset()
+#        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
+#                          np.ones(num_questions)
+#        self.posteriors = 0.5 * np.ones(self.num_questions)
+
+    
+    
+    def new_params(self, w, q):
+        a,b = self.params['thetas'][q]
+        c,d = self.params['skills'][w]
+        
+        new = dict()
+
+        # v=1 case
+        e_1q = a*((a+1)*c + b*d) / ((a+b+1)*(a*c + b*d))
+        e_2q = a*(a+1)*((a+2)*c + b*d) / ((a+b+1)*(a+b+2)*(a*c + b*d))
+            
+        e_1w = c*(a*(c+1) + b*d) / ((c+d+1)*(a*c + b*d))
+        e_2w = c*(c+1)*(a*(c+2) + b*d) / ((c+d+1)*(c+d+2)*(a*c + b*d))
+        
+        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
+        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
+
+        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
+        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
+        
+        new[1] = ((a_new, b_new), (c_new, d_new))
+        
+        # v=0 case
+        e_1q = a*(b*c + (a+1)*d) / ((a+b+1)*(b*c + a*d))
+        e_2q = a*(a+1)*(b*c + (a+2)*d) / ((a+b+1)*(a+b+2)*(b*c + a*d))
+            
+        e_1w = c*(b*(c+1) + a*d) / ((c+d+1)*(b*c + a*d))
+        e_2w = c*(c+1)*(b*(c+2) + a*d) / ((c+d+1)*(c+d+2)*(b*c + a*d))
+            
+        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
+        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
+
+        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
+        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
+        
+        new[0] = ((a_new, b_new), (c_new, d_new))
+        
+        return new
+        
+    
+    def update_params_kg(self, w, q, v):
+        new_params = self.new_params(w, q)
+        
+        ((a,b),(c,d)) = new_params[v]
+        
+        self.params['thetas'][q] = (a, b)
+        self.params['skills'][w] = (c, d)
+
+            
+
+    def update_posteriors(self, votes):
+        if votes:
+            for (w,q),v in votes.iteritems():
+                self.update_params_kg(w, q, v)
+            
+        self.posteriors = np.array([a/(a+b) for (a,b) in self.params['thetas']])
+#        print self.posteriors
+
+        # MAP estimate
+#        self.probs = self.allprobs(self.params['skills'],
+#                                   self.params['difficulties'])
+
+    def update_and_score(self, votes, vote_alts=None):
+        self.update_posteriors(votes)
+
+        n_observed = len(self.get_votes('observed'))
+        accuracy, exp_accuracy = self.score()
+        
+        def keys_to_str(d):
+            return dict(('{},{}'.format(*k), d[k]) for k in d)
+        
+        self.hist.append({'observed': n_observed,
+                          'time': self.time_elapsed,
+                          'accuracy': accuracy,
+                          'exp_accuracy': exp_accuracy,
+                          'posterior': self.posteriors.tolist()})
+
+#        self.hist_detailed.append({'observed': n_observed,
+#                                   'time': self.time_elapsed,
+#                                   'votes': keys_to_str(votes)})
+
+                          
+#        if vote_alts:
+#            # NOTE: modifying vote_alts (side effects)
+#            for d in vote_alts:
+#                d['heuristic'] = keys_to_str(d['heuristic'])
+#                d['selected'] = '{},{}'.format(*d['selected'])
+#                d['set'] = ['{},{}'.format(*t) for t in d['set']]
+#            self.hist_detailed[-1]['alternatives'] = vote_alts
+        
+        
+        workers = set(xrange(self.num_workers))
+        workers_remaining = set(w for w,q in self.get_votes('unobserved'))        
+        workers_finishing = workers.difference(workers_remaining).difference(
+                                                set(self.worker_finished))
+        for w in workers_finishing:
+            self.worker_finished[w] = {'observed': n_observed,
+                                       'time': self.time_elapsed}
+                                       #'skill': 1/self.gt_skills[w]}
+                                       
+    
+    def select_votes(self):
+        policy = self.method
+        num_skipped = 0
+
+        # get votes with different statuses (messy)
+        assigned_votes = self.get_votes('assigned')
+        unobserved_votes = self.get_votes('unobserved')
+        unassigned_votes = self.get_votes('unassigned')
+        acc = assigned_votes
+
+        # store values considered when making decisions
+        alternatives = []
+
+        while len(acc) < self.num_workers:
+            workers_in_acc = [w for w,q in acc]
+            candidates = [(w,q) for w,q in unassigned_votes if
+                          w not in workers_in_acc]
+
+            # no more votes remain unassigned for some workers, so break
+            if not candidates:
+                # remaining_workers = workers_in_acc
+                # print 'Remaining workers: {}'.format(sorted(remaining_workers))
+                break
+
+            #print "candidates: " + str(candidates)
+
+            if policy == 'kg_greedy':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    
+                    new_params = self.new_params(w,q)
+                    ((a1,b1),(_,_)) = new_params[1]
+                    ((a0,b0),(_,_)) = new_params[0]
+                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
+                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
+
+                    evals[w,q] = max(p1-p, p0-p)
+                
+                        
+                top = max(evals, key=lambda k:evals[k])
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+
+            elif policy == 'kg_greedy_unasked':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    
+                    new_params = self.new_params(w,q)
+                    ((a1,b1),(_,_)) = new_params[1]
+                    ((a0,b0),(_,_)) = new_params[0]
+                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
+                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
+
+                    evals[w,q] = max(p1-p, p0-p)
+                
+                # figure out questions asked
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                top,_,_ = min((((w,q),q_in_acc[q],-1*evals[w,q]) for
+                               w,q in candidates),
+                              key=operator.itemgetter(1,2))
+                        
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+            
+            elif policy == 'kg_uncertainty':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    evals[w,q] = p
+                
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                top,_,_ = min((((w,q),q_in_acc[q],evals[w,q]) for
+                               w,q in candidates),
+                              key=operator.itemgetter(1,2))
+                        
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+
+            elif policy == 'random':
+#                print 'candidates: {}'.format(candidates)
+                acc.append(random.choice(candidates))
+                
+            elif policy == 'same_question':
+                q_in_acc = set(q for w,q in acc)
+                opts = [(w,q) for w,q in candidates if q in q_in_acc]
+                if opts:
+                    acc.append(random.choice(opts))
+                else:
+                    acc.append(random.choice(candidates))
+                    
+            elif policy == 'rr':
+                q_remaining = np.sum(self.observations == -1, 0)
+                for w,q in acc:
+                    q_remaining[q] -= 1
+                q_opt = set(q for w,q in candidates)
+                max_remaining_votes = max(q_remaining[q] for q in q_opt)
+                q_opt = [q for q in q_opt if
+                         q_remaining[q] == max_remaining_votes]
+
+
+                # was selecting whatever max returns
+                #q_sel = max(q_opt, key=lambda x: q_remaining[x])
+
+                # random question
+                q_sel = random.choice(q_opt)
+
+                # random worker for selected question
+                w_sel = random.choice([w for w,q in candidates if q == q_sel])
+                acc.append((w_sel,q_sel))
+                
+
+            elif policy == 'uncertainty' or policy == 'uncertainty_reverse':
+                assert self.known_difficulty and self.known_skill
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                v = min((((w,q),q_in_acc[q],np.abs(self.posteriors[q]-0.5)) for
+                         w,q in candidates),
+                        key=operator.itemgetter(1,2))
+                acc.append(v[0])
+
+            else:
+                raise Exception('Undefined policy')
+
+#        print "Lazy evaluations saved: {}".format(num_skipped)
+        return acc, alternatives

@@ -21,7 +21,8 @@ class Platform():
     def __init__(self, gt_labels, 
                  votes=None, num_workers=None,
                  skills=None, difficulties=None,
-                 times=None, subsample=None):
+                 times=None, subsample=None,
+                 thetas=None):
 
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
@@ -60,6 +61,11 @@ class Platform():
                 
         elif num_workers is not None:
             assert not subsample
+ 
+            # new kg method
+            if thetas is not None:
+                difficulties = thetas
+            
             if not isinstance(skills, np.ndarray):
                 skills = skills or ODESK_SKILL_DIST
             if not isinstance(difficulties, np.ndarray):
@@ -68,7 +74,14 @@ class Platform():
             self.gt_skills, self.gt_difficulties = self.get_params(
                                                                 skills,
                                                                 difficulties)
-            self.votes = self.make_votes(self.gt_skills, self.gt_difficulties)
+
+            # new kg method
+            if thetas is not None:
+                assert all(self.gt_skills >= 0) and all(self.gt_skills <= 1)
+                self.votes = self.make_votes(self.gt_skills, self.gt_difficulties,
+                                             method='kg')
+            else:
+                self.votes = self.make_votes(self.gt_skills, self.gt_difficulties)
         else:
             raise Exception('Must specify number of workers or provide votes')
 
@@ -127,10 +140,30 @@ class Platform():
         return self.prob_correct(skills[:, np.newaxis],
                                  difficulties)
 
-    def make_votes(self, skills, difficulties):
+    def allprobs_kg(self, skills, thetas):
+        """Return |workers| x |questions| matrix with prob of worker answering
+        correctly. Uses new knowledge_gradient method.
+        """
+        def prob_kg(s, t):
+            """Probability perfect worker correct and worker correct or
+            both wrong.
+            """
+            return np.maximum(t,1-t)*s + np.minimum(t,1-t)*(1-s)
+        
+            
+        return prob_kg(skills[:, np.newaxis],
+                       thetas)
+
+
+    def make_votes(self, skills, difficulties, method=None):
         """Generate worker votes. Unvectorized, but shouldn't matter."""
         self.is_deterministic = False
-        probs = self.allprobs(skills, difficulties)
+        
+        if method == 'kg':
+            probs = self.allprobs_kg(skills, difficulties)
+        else:
+            probs = self.allprobs(skills, difficulties)
+        print probs
 
         o = dict()
         for w,q in itertools.product(xrange(self.num_workers),

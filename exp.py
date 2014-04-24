@@ -17,15 +17,15 @@ import os
 import copy
 import itertools
 
-from control import Controller
+from control import Controller, ControllerKG
 from platform import Platform
 import parse
 
 
 
-def gen_labels(num_questions):
-    """Randomly generate labels"""
-    return np.round(np.random.random(num_questions))
+def gen_thetas(num_questions):
+    """Randomly generate thetas"""
+    return np.random.random(num_questions)
 
 
 def est_final_params(gt_observations):
@@ -215,6 +215,7 @@ if __name__ == '__main__':
     sample_p = bool(s['sample'])
     n_exps = int(s['n_exps'])
 
+    type_in = val_or_none(s, 'type')
     skill_in = val_or_none(s, 'skill', lambda x: parse_skill(x))
     diff_in = val_or_none(s, 'diff')
     time_in = val_or_none(s, 'time')
@@ -297,14 +298,20 @@ if __name__ == '__main__':
 #            print run_once
         else:
             run_once = False
-            gt_labels = gen_labels(n_questions)
+            gt_thetas = gen_thetas(n_questions)
+            gt_labels = np.round(gt_thetas)
+            
+            if type_in != 'kg':
+                gt_thetas = None
+                
             platform = Platform(
                     num_workers=n_workers,
                     gt_labels=first_array_or_true([labels_in, gt_labels]),
                     difficulties=first_array_or_true([diff_in,
                                                       gold.get_difficulties()]),
                     times=first_array_or_true([time_in, gold.get_times()]),
-                    skills=first_array_or_true([skill_in, gold.get_skills()]))
+                    skills=first_array_or_true([skill_in, gold.get_skills()]),
+                    thetas=gt_thetas)
 
 
         # run
@@ -317,12 +324,20 @@ if __name__ == '__main__':
 
             np.random.seed(rint)
             platform.reset()
-            controller = Controller(method=p['type'],
-                                    platform=platform,
-                                    num_workers=platform.num_workers,
-                                    num_questions=platform.num_questions,
-                                    known_d=eval(p['known_d']),
-                                    known_s=eval(p['known_s']))
+            if type_in != 'kg':
+                controller = Controller(method=p['type'],
+                                        platform=platform,
+                                        num_workers=platform.num_workers,
+                                        num_questions=platform.num_questions,
+                                        known_d=eval(p['known_d']),
+                                        known_s=eval(p['known_s']))
+            else:
+                controller = ControllerKG(method=p['type'],
+                                        platform=platform,
+                                        num_workers=platform.num_workers,
+                                        num_questions=platform.num_questions,
+                                        known_d=eval(p['known_d']),
+                                        known_s=eval(p['known_s']))
                                     
             if 'offline' in p:
                 r = controller.run_offline()
