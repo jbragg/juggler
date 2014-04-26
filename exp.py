@@ -324,7 +324,7 @@ if __name__ == '__main__':
 
             np.random.seed(rint)
             platform.reset()
-            if type_in != 'kg':
+            if not p['type'].startswith('kg_'):
                 controller = Controller(method=p['type'],
                                         platform=platform,
                                         num_workers=platform.num_workers,

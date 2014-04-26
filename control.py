@@ -1075,7 +1075,14 @@ class ControllerKG(Controller):
             for (w,q),v in votes.iteritems():
                 self.update_params_kg(w, q, v)
             
-        self.posteriors = np.array([a/(a+b) for (a,b) in self.params['thetas']])
+        # predict with betas
+#        self.posteriors = np.array([a/(a+b) for (a,b) in self.params['thetas']])
+        
+        # predict with MV
+        n1 = np.sum(self.observations == 1, axis=0)
+        n0 = np.sum(self.observations == 0, axis=0)
+        self.posteriors =  (n1 + .01) / (n1 + n0 + .02)
+        
 #        print self.posteriors
 
         # MAP estimate
