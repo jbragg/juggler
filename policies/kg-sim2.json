@@ -1,6 +1,6 @@
 {
-"n_workers": "12",
-"n_questions": "50",
+"n_workers": "3",
+"n_questions": "20",
 "sample": "True",
 "n_exps": "200",
 
@@ -13,41 +13,44 @@
 
 "policies":
 [
-{"name": "Random",
- "type": "random",
- "known_d": "True",
- "known_s": "True"
-},
-{"name": "Round robin",
- "type": "rr",
- "known_d": "True",
- "known_s": "True"
-},
-{"name": "Uncertainty",
- "type": "uncertainty",
- "known_d": "True",
- "known_s": "True"
-},
-{"name": "Greedy reverse (known)",
- "type": "greedy_reverse",
- "known_d": "True",
- "known_s": "True"
-},
+
 
 {"name": "Uncertainty (KG)",
  "type": "kg_uncertainty",
  "known_d": "False",
- "known_s": "False"
+ "known_s": "False",
+ "eval": "kg"
 },
 {"name": "Greedy (KG)",
  "type": "kg_greedy",
  "known_d": "False",
- "known_s": "False"
+ "known_s": "False",
+ "eval": "kg"
 },
 {"name": "Greedy, unasked (KG)",
  "type": "kg_greedy_unasked",
  "known_d": "False",
- "known_s": "False"
+ "known_s": "False",
+ "eval": "kg"
+},
+{"name": "Uncertainty (KG_reg)",
+ "type": "kg_uncertainty",
+ "known_d": "False",
+ "known_s": "False",
+ "eval": "kg_lbfgs"
+},
+{"name": "Greedy (KG_lbfgs)",
+ "type": "kg_greedy",
+ "known_d": "False",
+ "known_s": "False",
+ "eval": "kg_lbfgs"
+},
+{"name": "Greedy, unasked (KG_lbfgs)",
+ "type": "kg_greedy_unasked",
+ "known_d": "False",
+ "known_s": "False",
+ "eval": "kg_lbfgs"
 }
+
 ]
 }

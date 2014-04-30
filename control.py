@@ -27,13 +27,15 @@ class Controller():
                  platform,
                  num_questions, num_workers,
                  known_s=True, known_d=True,
+                 post_inf='reg',
                  sample=True):
 
         # method can be 'random', 'rr', 'greedy', 'greedy_reverse"
         self.method = method  
         self.platform = platform
+        self.post_inf = post_inf
 
-        self.prior = (2,2) # prior for diff (was prior for diff and label)
+        self.prior = (1,1) # prior for diff (was prior for diff and label)
         self.sample = sample
 
         self.known_difficulty = known_d
@@ -57,14 +59,21 @@ class Controller():
         self.num_workers = num_workers
 
 
+        self.params = defaultdict(dict)
+        
+        self.params['kg'] = dict()
+        self.params['kg']['skills'] = [(4,2) for w in xrange(num_workers)]
+        self.params['kg']['thetas'] = [(1.0001,1.0001) for q in xrange(num_questions)]
+
+        self.params['kg_lbfgs'] = {'skills': np.array([.75 for w in xrange(num_workers)]),
+                                   'thetas': np.array([.5 for q in xrange(num_questions)])}
+        
         
         # other initialization
         self.reset()
 #        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
 #                          np.ones(num_questions)
 #        self.posteriors = 0.5 * np.ones(self.num_questions)
-
-        self.params = None # contains MAP label posteriors, difficulties
 
 
 
@@ -199,7 +208,7 @@ class Controller():
             return post, ll / self.num_questions
 
        
-        def M(posteriors):
+        def M(posteriors, params_in):
             if known_s and known_d:
                 params = dict()
                 params['skills'] = self.gt_skills
@@ -317,7 +326,8 @@ class Controller():
                 init_d = 0.1 * np.ones(self.num_questions)
                 bounds_d = [(0.0000000001,0.9999999999) for 
                            i in xrange(self.num_questions)]
-                init_s = 0.9 * np.ones(self.num_workers)
+#                init_s = 0.9 * np.ones(self.num_workers)
+                init_s = params_in['skills']
                 bounds_s = [(0.0000000001,None) for 
                            i in xrange(self.num_workers)]
 
@@ -339,6 +349,7 @@ class Controller():
                             bounds=bounds,
                             options={'disp':False})
 #                print res.x
+#                print 'success: ',res.success
                 if not known_d and known_s:
                     params['difficulties'] = res.x
                     params['skills'] = self.gt_skills
@@ -349,6 +360,7 @@ class Controller():
                     params['difficulties'] = res.x[:self.num_questions]
                     params['skills'] = res.x[self.num_questions:]
  
+
 #                print params['skills']
 #                print params['difficulties']
                 return params
@@ -369,7 +381,7 @@ class Controller():
         while ll_change > 0.001:  # run while ll increase is at least .1%
 #            print 'EM round: ' + str(em_round)
             posteriors,ll_new = E(params)
-            params = M(posteriors)
+            params = M(posteriors, params)
 
             if ll == float('-inf'):
                 ll_change = float('inf')
@@ -377,10 +389,11 @@ class Controller():
                 ll_change = (ll_new - ll) / np.abs(ll) # percent increase
 
             ll = ll_new
-#            print 'em_round: ' + str(em_round)
-#            print 'll_change: ' + str(ll_change)
-#            print 'log likelihood: ' + str(ll)
-#            print params['difficulties']
+            # print 'em_round: ' + str(em_round)
+            # print 'll_change: ' + str(ll_change)
+            # print 'log likelihood: ' + str(ll)
+            # print params['skills'][:5]
+            # print
 
             # NOTE: good to have this assert, but fails w/ gradient ascent
             #assert ll_change > -0.001  # ensure ll is nondecreasing
@@ -417,6 +430,163 @@ class Controller():
 
         return np.exp(ptrue) / np.exp(norm), np.sum(norm)
 
+    #----- KG inference functions
+    def new_params(self, w, q):
+        a,b = self.params['kg']['thetas'][q]
+        c,d = self.params['kg']['skills'][w]
+        
+        new = dict()
+
+        # v=1 case
+        e_1q = a*((a+1)*c + b*d) / ((a+b+1)*(a*c + b*d))
+        e_2q = a*(a+1)*((a+2)*c + b*d) / ((a+b+1)*(a+b+2)*(a*c + b*d))
+            
+        e_1w = c*(a*(c+1) + b*d) / ((c+d+1)*(a*c + b*d))
+        e_2w = c*(c+1)*(a*(c+2) + b*d) / ((c+d+1)*(c+d+2)*(a*c + b*d))
+        
+        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
+        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
+
+        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
+        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
+        
+        new[1] = ((a_new, b_new), (c_new, d_new))
+        
+        # v=0 case
+        e_1q = a*(b*c + (a+1)*d) / ((a+b+1)*(b*c + a*d))
+        e_2q = a*(a+1)*(b*c + (a+2)*d) / ((a+b+1)*(a+b+2)*(b*c + a*d))
+            
+        e_1w = c*(b*(c+1) + a*d) / ((c+d+1)*(b*c + a*d))
+        e_2w = c*(c+1)*(b*(c+2) + a*d) / ((c+d+1)*(c+d+2)*(b*c + a*d))
+            
+        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
+        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
+
+        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
+        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
+        
+        new[0] = ((a_new, b_new), (c_new, d_new))
+        
+        return new
+
+
+    def update_params_kg(self, w, q, v):
+        new_params = self.new_params(w, q)
+        
+        ((a,b),(c,d)) = new_params[v]
+        
+        self.params['kg']['thetas'][q] = (a, b)
+        self.params['kg']['skills'][w] = (c, d)
+
+        
+    def optimize_kg(self):
+        assert not self.known_difficulty
+        assert not self.known_skill
+
+        v1 = self.observations == 1
+        v0 = self.observations == 0
+        
+        q_prior = (1.1, 1.1)
+        w_prior = (4,2)
+        
+        def f(params):
+            """Returns likelihood of [thetas, skills]"""
+            params_q = params[:self.num_questions]
+            params_w = params[self.num_questions:]
+            params_w_t = params[self.num_questions:][:, np.newaxis]
+            
+            
+            # calculate loglikelihood
+
+            # print '1votes,', (v1 * params_q * params_w_t + v1 * (1-params_q) * (1-params_w_t))
+            # print '2votes,', (v0 * (1-params_q) * params_w_t + v0 * params_q * (1-params_w_t))
+            ll = 0
+            ll += np.sum(v1 * np.logaddexp(
+                            np.log(params_q * params_w_t),
+                            np.log((1-params_q) * (1-params_w_t))))
+            # print '1: ',v1 * np.logaddexp(
+            #                 np.log(params_q * params_w_t),
+            #                 np.log((1-params_q) * (1-params_w_t)))
+            
+            ll += np.sum(v0 * np.logaddexp(
+                            np.log((1-params_q) * params_w_t),
+                            np.log(params_q * (1-params_w_t))))
+            # print '0: ',v0 * np.logaddexp(
+            #                 np.log((1-params_q) * params_w_t),
+            #                 np.log(params_q * (1-params_w_t)))
+
+            prior_q = np.log(scipy.stats.beta.pdf(params_q, *q_prior))
+            prior_w = np.log(scipy.stats.beta.pdf(params_w, *w_prior))
+            
+            ll += np.sum(prior_q) + np.sum(prior_w)
+            
+            # print 'll: ',ll
+        
+            # calculate gradient            
+            # print params_q*params_w_t + (1-params_q)*(1-params_w_t)
+            # print 1/(params_q*params_w_t + (1-params_q)*(1-params_w_t))
+            # print 1/(params_q*params_w_t + (1-params_q)*(1-params_w_t)) *\
+            #              (2*params_w_t - 1)
+            # print v1 * (1/(params_q*params_w_t + (1-params_q)*(1-params_w_t)) *\
+            #              (2*params_w_t - 1))
+            # print
+            dldq = v1 * (1/(params_q*params_w_t + (1-params_q)*(1-params_w_t)) *\
+                         (2*params_w_t - 1))
+            dldw = v1 * (1/(params_q*params_w_t + (1-params_q)*(1-params_w_t)) *\
+                         (2*params_q - 1))
+
+            # print 'dldq',dldq
+
+            dldq += v0 * (1/((1-params_q)*params_w_t + params_q*(1-params_w_t)) *\
+                         (-2*params_w_t + 1))
+            dldw += v0 * (1/((1-params_q)*params_w_t + params_q*(1-params_w_t)) *\
+                         (-2*params_q + 1))
+
+            # print 'dldq',dldq
+                         
+            dldq = np.zeros(self.num_questions) + np.sum(dldq, axis=0)
+            dldw = np.zeros(self.num_workers) + np.sum(dldw, axis=1)
+        
+
+            # print ':',dbeta(params_q, *q_prior)
+            dldq += 1/prior_q * dbeta(params_q, *q_prior)
+            dldw += 1/prior_w * dbeta(params_w, *w_prior)
+            
+            
+            # print 'q: ',params_q
+            # print 'dldq: ',dldq
+            # print 'w: ',params_w
+            # print 'dldw: ',dldw
+            # print 'll: ',ll
+            # print
+            
+            return (-ll, -np.hstack((dldq, dldw)))
+#            return -ll
+
+
+        res = scipy.optimize.minimize(
+                    f,
+                    # 0.5 * np.ones(self.num_questions + self.num_workers),
+                    np.hstack((self.params['kg_lbfgs']['thetas'],
+                               self.params['kg_lbfgs']['skills'])),
+                    method='L-BFGS-B',
+                    jac=True,
+                    bounds=[(0.000000001,0.9999999999) for 
+                            i in xrange(self.num_questions + self.num_workers)],
+                    options={'disp': False})
+#                             'maxiter': 50})
+#                print res.x
+
+        # print 'f: ', res.fun
+        print 'success: ', res.success
+        params = dict()
+        params['thetas'] = res.x[:self.num_questions]
+        params['skills'] = res.x[self.num_questions:]
+        
+        posteriors = np.copy(params['thetas'])
+        
+        return params, posteriors
+
 
     #----------- control -----------
 
@@ -428,10 +598,10 @@ class Controller():
 
         if policy == 'greedy':
             w_order = sorted(xrange(self.num_workers),
-                             key=lambda i:self.params['skills'][i])
+                             key=lambda i:self.params['reg']['skills'][i])
         elif policy == 'greedy_reverse':
             w_order = sorted(xrange(self.num_workers),
-                             key=lambda i:-self.params['skills'][i])
+                             key=lambda i:-self.params['reg']['skills'][i])
         else:
             raise 'Undefined policy'
 
@@ -491,8 +661,9 @@ class Controller():
                 # print 'Remaining workers: {}'.format(sorted(remaining_workers))
                 break
 
-            max_w,_ = min(candidates, key=lambda x: self.params['skills'][x[0]])
-            min_w,_ = max(candidates, key=lambda x: self.params['skills'][x[0]])
+            if self.post_inf == 'reg':
+                max_w,_ = min(candidates, key=lambda x: self.params['reg']['skills'][x[0]])
+                min_w,_ = max(candidates, key=lambda x: self.params['reg']['skills'][x[0]])
 
 
             # BUG: assumes uses best known skill (GT or MAP)
@@ -627,6 +798,77 @@ class Controller():
                         key=operator.itemgetter(1,2))
                 acc.append(v[0])
 
+            # KG POLICIES
+            
+            elif policy == 'kg_greedy':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['kg']['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    
+                    new_params = self.new_params(w,q)
+                    ((a1,b1),(_,_)) = new_params[1]
+                    ((a0,b0),(_,_)) = new_params[0]
+                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
+                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
+
+                    evals[w,q] = max(p1-p, p0-p)
+                
+                        
+                top = max(evals, key=lambda k:evals[k])
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+
+            elif policy == 'kg_greedy_unasked':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['kg']['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    
+                    new_params = self.new_params(w,q)
+                    ((a1,b1),(_,_)) = new_params[1]
+                    ((a0,b0),(_,_)) = new_params[0]
+                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
+                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
+
+                    evals[w,q] = max(p1-p, p0-p)
+                
+                # figure out questions asked
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                top,_,_ = min((((w,q),q_in_acc[q],-1*evals[w,q]) for
+                               w,q in candidates),
+                              key=operator.itemgetter(1,2))
+                        
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+            
+            elif policy == 'kg_uncertainty':
+                evals = dict()
+                for w,q in candidates:
+                    a,b = self.params['kg']['thetas'][q]
+                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
+                    evals[w,q] = p
+                
+                q_in_acc = defaultdict(int)
+                for w,q in acc:
+                    q_in_acc[q] = 1
+
+                top,_,_ = min((((w,q),q_in_acc[q],evals[w,q]) for
+                               w,q in candidates),
+                              key=operator.itemgetter(1,2))
+                        
+                acc.append(top)
+                alternatives.append({'selected': top,
+                                     'set': acc[:-1],
+                                     'heuristic': evals.copy()})
+
             else:
                 raise Exception('Undefined policy')
 
@@ -695,7 +937,7 @@ class Controller():
                         newobs[w,q] = 0
 
                 # BUG: don't need to do inference for all questions if skill known
-                newposts,_ = self.infer(newobs, self.params)
+                newposts,_ = self.infer(newobs, self.params['reg'])
                 pL = newposts[x[1]]
                 pCorrect = self.probs[x]
                 p = np.log(np.array([
@@ -840,7 +1082,7 @@ class Controller():
 
 
     def update_and_score(self, votes, vote_alts=None):
-        self.update_posteriors()
+        self.update_posteriors(votes)
 
         n_observed = len(self.get_votes('observed'))
         accuracy, exp_accuracy = self.score()
@@ -848,15 +1090,38 @@ class Controller():
         def keys_to_str(d):
             return dict(('{},{}'.format(*k), d[k]) for k in d)
         
+        def dict_to_json(d):
+            return [{'worker': k[0],
+                     'question': k[1],
+                     'vote': d[k]} for k in d]
+                     
+        def params_to_json(d):
+            params = dict()
+            if self.params['kg']:
+                params['kg'] = \
+                    {'thetas': list(self.params['kg']['thetas']),
+                     'skills': list(self.params['kg']['skills'])}
+                                
+            if self.params['reg']:
+                params['reg'] = \
+                    {'difficulties': self.params['reg']['difficulties'].copy(),
+                     'skills': self.params['reg']['skills'].copy()}
+            return params.copy()
+        
         self.hist.append({'observed': n_observed,
                           'time': self.time_elapsed,
                           'accuracy': accuracy,
                           'exp_accuracy': exp_accuracy,
                           'posterior': self.posteriors.tolist()})
 
-#        self.hist_detailed.append({'observed': n_observed,
-#                                   'time': self.time_elapsed,
-#                                   'votes': keys_to_str(votes)})
+        self.hist_detailed.append({'observed': n_observed,
+                                   'time': self.time_elapsed,
+                                   'votes': dict_to_json(votes),
+                                   'params': params_to_json(self.params),
+                                   'accuracy': accuracy,
+                                   'posterior': self.posteriors.tolist()})
+                                   
+                                  # 'votes': keys_to_str(votes)})
 
                           
 #        if vote_alts:
@@ -874,8 +1139,8 @@ class Controller():
                                                 set(self.worker_finished))
         for w in workers_finishing:
             self.worker_finished[w] = {'observed': n_observed,
-                                       'time': self.time_elapsed,
-                                       'skill': 1/self.gt_skills[w]}
+                                       'time': self.time_elapsed}
+                                       #'skill': 1/self.gt_skills[w]}
 
 
 
@@ -890,20 +1155,52 @@ class Controller():
         else:
             raise Exception('Undefined score metric')
 
-    def update_posteriors(self):
-        params, posteriors = self.run_em()
-        self.params = params
-        self.posteriors = posteriors
+    def update_posteriors(self, votes):
+        #--- KG update
+        if votes:
+            for (w,q),v in votes.iteritems():
+                self.update_params_kg(w, q, v)
+            
+        if self.post_inf == 'kg':
+            #--- KG posterior mean of betas
+            self.posteriors = np.array([a/(a+b) for (a,b) in self.params['kg']['thetas']])
+        elif self.post_inf == 'kg_lbfgs':
+            params, posteriors = self.optimize_kg()
+            self.params['kg_lbfgs'] = params
+            self.posteriors = posteriors
+        elif self.post_inf == 'mv':
+            # predict with MV
+            n1 = np.sum(self.observations == 1, axis=0)
+            n0 = np.sum(self.observations == 0, axis=0)
+            self.posteriors =  (n1 + .01) / (n1 + n0 + .02)
+        elif self.post_inf == 'reg':
+            params, posteriors = self.run_em()
+            self.params['reg'] = params
+            self.posteriors = posteriors
 
 
-        # MAP estimate
-        self.probs = self.allprobs(self.params['skills'],
-                                   self.params['difficulties'])
+            def mode_or_undef(a,b):
+                if a>1 and b>1:
+                    return (a-1)/(a+b-2)
+                else:
+                    return 'Undefined'
+            # print 'kg skills: ',[mode_or_undef(a,b) for (a,b) in self.params['kg']['skills']]
+            # print 'kg thetas: ',[a/(a+b) for (a,b) in self.params['kg']['thetas']]
+            # print 'reg skills: ',self.params['reg']['skills']
+            # print 'reg diffs: ',self.params['reg']['difficulties']
+            # print 'reg post: ',self.posteriors
+            
+
+            # MAP estimate
+            self.probs = self.allprobs(self.params['reg']['skills'],
+                                       self.params['reg']['difficulties'])
+        else:
+            raise Exception('Undefined posterior inference method')
+
+
                    
     def get_results(self):
-        return {"gt_difficulties": self.platform.gt_difficulties.tolist(),
-                "gt_skills": self.platform.gt_skills.tolist(),
-                "hist": self.hist,
+        return {"hist": self.hist,
                 "hist_detailed": self.hist_detailed,
                 "when_finished": self.worker_finished}
 
@@ -972,303 +1269,7 @@ class Controller():
         return self.get_results()
 
 
-class ControllerKG(Controller):
-    def __init__(self, method,
-                 platform,
-                 num_questions, num_workers,
-                 known_s=True, known_d=True,
-                 sample=True):
-
-        # method can be 'random', 'rr', 'greedy', 'greedy_reverse"
-        self.method = method  
-        self.platform = platform
-
-        self.prior = (2,2) # prior for diff (was prior for diff and label)
-        self.sample = sample
-
-        self.known_difficulty = known_d
-        self.known_skill = known_s
-        self.gt_labels = platform.gt_labels
-
-        if known_s:
-            self.gt_skills = platform.gt_skills
-            assert self.gt_skills is not None
-        else:
-            self.gt_skills = None
-
-        if known_d:
-            self.gt_difficulties = platform.gt_difficulties
-            assert self.gt_difficulties is not None
-        else:
-            self.gt_difficulties = None
-
-
-        self.num_questions = num_questions
-        self.num_workers = num_workers
-
-        # NEW
-        self.params = dict()
-        self.params['skills'] = [(2,1) for w in xrange(num_workers)]
-        self.params['thetas'] = [(1,1) for q in xrange(num_questions)]
-
-
-        
-        # other initialization
-        self.reset()
-#        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
-#                          np.ones(num_questions)
-#        self.posteriors = 0.5 * np.ones(self.num_questions)
 
     
-    
-    def new_params(self, w, q):
-        a,b = self.params['thetas'][q]
-        c,d = self.params['skills'][w]
-        
-        new = dict()
-
-        # v=1 case
-        e_1q = a*((a+1)*c + b*d) / ((a+b+1)*(a*c + b*d))
-        e_2q = a*(a+1)*((a+2)*c + b*d) / ((a+b+1)*(a+b+2)*(a*c + b*d))
-            
-        e_1w = c*(a*(c+1) + b*d) / ((c+d+1)*(a*c + b*d))
-        e_2w = c*(c+1)*(a*(c+2) + b*d) / ((c+d+1)*(c+d+2)*(a*c + b*d))
-        
-        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
-        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
-
-        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
-        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
-        
-        new[1] = ((a_new, b_new), (c_new, d_new))
-        
-        # v=0 case
-        e_1q = a*(b*c + (a+1)*d) / ((a+b+1)*(b*c + a*d))
-        e_2q = a*(a+1)*(b*c + (a+2)*d) / ((a+b+1)*(a+b+2)*(b*c + a*d))
-            
-        e_1w = c*(b*(c+1) + a*d) / ((c+d+1)*(b*c + a*d))
-        e_2w = c*(c+1)*(b*(c+2) + a*d) / ((c+d+1)*(c+d+2)*(b*c + a*d))
-            
-        a_new = e_1q * (e_1q - e_2q) / (e_2q - e_1q**2)
-        b_new = (1-e_1q) * (e_1q - e_2q) / (e_2q - e_1q**2)
-
-        c_new = e_1w * (e_1w - e_2w) / (e_2w - e_1w**2)
-        d_new = (1-e_1w) * (e_1w - e_2w) / (e_2w - e_1w**2)
-        
-        new[0] = ((a_new, b_new), (c_new, d_new))
-        
-        return new
-        
-    
-    def update_params_kg(self, w, q, v):
-        new_params = self.new_params(w, q)
-        
-        ((a,b),(c,d)) = new_params[v]
-        
-        self.params['thetas'][q] = (a, b)
-        self.params['skills'][w] = (c, d)
-
-            
-
-    def update_posteriors(self, votes):
-        if votes:
-            for (w,q),v in votes.iteritems():
-                self.update_params_kg(w, q, v)
-            
-        # predict with betas
-#        self.posteriors = np.array([a/(a+b) for (a,b) in self.params['thetas']])
-        
-        # predict with MV
-        n1 = np.sum(self.observations == 1, axis=0)
-        n0 = np.sum(self.observations == 0, axis=0)
-        self.posteriors =  (n1 + .01) / (n1 + n0 + .02)
-        
-#        print self.posteriors
-
-        # MAP estimate
-#        self.probs = self.allprobs(self.params['skills'],
-#                                   self.params['difficulties'])
-
-    def update_and_score(self, votes, vote_alts=None):
-        self.update_posteriors(votes)
-
-        n_observed = len(self.get_votes('observed'))
-        accuracy, exp_accuracy = self.score()
-        
-        def keys_to_str(d):
-            return dict(('{},{}'.format(*k), d[k]) for k in d)
-        
-        self.hist.append({'observed': n_observed,
-                          'time': self.time_elapsed,
-                          'accuracy': accuracy,
-                          'exp_accuracy': exp_accuracy,
-                          'posterior': self.posteriors.tolist()})
-
-#        self.hist_detailed.append({'observed': n_observed,
-#                                   'time': self.time_elapsed,
-#                                   'votes': keys_to_str(votes)})
-
-                          
-#        if vote_alts:
-#            # NOTE: modifying vote_alts (side effects)
-#            for d in vote_alts:
-#                d['heuristic'] = keys_to_str(d['heuristic'])
-#                d['selected'] = '{},{}'.format(*d['selected'])
-#                d['set'] = ['{},{}'.format(*t) for t in d['set']]
-#            self.hist_detailed[-1]['alternatives'] = vote_alts
-        
-        
-        workers = set(xrange(self.num_workers))
-        workers_remaining = set(w for w,q in self.get_votes('unobserved'))        
-        workers_finishing = workers.difference(workers_remaining).difference(
-                                                set(self.worker_finished))
-        for w in workers_finishing:
-            self.worker_finished[w] = {'observed': n_observed,
-                                       'time': self.time_elapsed}
-                                       #'skill': 1/self.gt_skills[w]}
-                                       
-    
-    def select_votes(self):
-        policy = self.method
-        num_skipped = 0
-
-        # get votes with different statuses (messy)
-        assigned_votes = self.get_votes('assigned')
-        unobserved_votes = self.get_votes('unobserved')
-        unassigned_votes = self.get_votes('unassigned')
-        acc = assigned_votes
-
-        # store values considered when making decisions
-        alternatives = []
-
-        while len(acc) < self.num_workers:
-            workers_in_acc = [w for w,q in acc]
-            candidates = [(w,q) for w,q in unassigned_votes if
-                          w not in workers_in_acc]
-
-            # no more votes remain unassigned for some workers, so break
-            if not candidates:
-                # remaining_workers = workers_in_acc
-                # print 'Remaining workers: {}'.format(sorted(remaining_workers))
-                break
-
-            #print "candidates: " + str(candidates)
-
-            if policy == 'kg_greedy':
-                evals = dict()
-                for w,q in candidates:
-                    a,b = self.params['thetas'][q]
-                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
-                    
-                    new_params = self.new_params(w,q)
-                    ((a1,b1),(_,_)) = new_params[1]
-                    ((a0,b0),(_,_)) = new_params[0]
-                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
-                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
-
-                    evals[w,q] = max(p1-p, p0-p)
-                
-                        
-                top = max(evals, key=lambda k:evals[k])
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
-
-            elif policy == 'kg_greedy_unasked':
-                evals = dict()
-                for w,q in candidates:
-                    a,b = self.params['thetas'][q]
-                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
-                    
-                    new_params = self.new_params(w,q)
-                    ((a1,b1),(_,_)) = new_params[1]
-                    ((a0,b0),(_,_)) = new_params[0]
-                    p1 = max(betainc(a1,b1,0.5), 1-betainc(a1,b1,0.5))                    
-                    p0 = max(betainc(a0,b0,0.5), 1-betainc(a0,b0,0.5))
-
-                    evals[w,q] = max(p1-p, p0-p)
-                
-                # figure out questions asked
-                q_in_acc = defaultdict(int)
-                for w,q in acc:
-                    q_in_acc[q] = 1
-
-                top,_,_ = min((((w,q),q_in_acc[q],-1*evals[w,q]) for
-                               w,q in candidates),
-                              key=operator.itemgetter(1,2))
-                        
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
-            
-            elif policy == 'kg_uncertainty':
-                evals = dict()
-                for w,q in candidates:
-                    a,b = self.params['thetas'][q]
-                    p = max(betainc(a,b,0.5), 1-betainc(a,b,0.5))
-                    evals[w,q] = p
-                
-                q_in_acc = defaultdict(int)
-                for w,q in acc:
-                    q_in_acc[q] = 1
-
-                top,_,_ = min((((w,q),q_in_acc[q],evals[w,q]) for
-                               w,q in candidates),
-                              key=operator.itemgetter(1,2))
-                        
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
-
-            elif policy == 'random':
-#                print 'candidates: {}'.format(candidates)
-                acc.append(random.choice(candidates))
-                
-            elif policy == 'same_question':
-                q_in_acc = set(q for w,q in acc)
-                opts = [(w,q) for w,q in candidates if q in q_in_acc]
-                if opts:
-                    acc.append(random.choice(opts))
-                else:
-                    acc.append(random.choice(candidates))
-                    
-            elif policy == 'rr':
-                q_remaining = np.sum(self.observations == -1, 0)
-                for w,q in acc:
-                    q_remaining[q] -= 1
-                q_opt = set(q for w,q in candidates)
-                max_remaining_votes = max(q_remaining[q] for q in q_opt)
-                q_opt = [q for q in q_opt if
-                         q_remaining[q] == max_remaining_votes]
 
 
-                # was selecting whatever max returns
-                #q_sel = max(q_opt, key=lambda x: q_remaining[x])
-
-                # random question
-                q_sel = random.choice(q_opt)
-
-                # random worker for selected question
-                w_sel = random.choice([w for w,q in candidates if q == q_sel])
-                acc.append((w_sel,q_sel))
-                
-
-            elif policy == 'uncertainty' or policy == 'uncertainty_reverse':
-                assert self.known_difficulty and self.known_skill
-                q_in_acc = defaultdict(int)
-                for w,q in acc:
-                    q_in_acc[q] = 1
-
-                v = min((((w,q),q_in_acc[q],np.abs(self.posteriors[q]-0.5)) for
-                         w,q in candidates),
-                        key=operator.itemgetter(1,2))
-                acc.append(v[0])
-
-            else:
-                raise Exception('Undefined policy')
-
-#        print "Lazy evaluations saved: {}".format(num_skipped)
-        return acc, alternatives

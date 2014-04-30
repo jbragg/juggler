@@ -17,9 +17,18 @@ import os
 import copy
 import itertools
 
-from control import Controller, ControllerKG
+from control import Controller
 from platform import Platform
 import parse
+
+NUM_SAVE = 5
+
+class NumpyAwareJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray) and obj.ndim == 1:
+                return obj.tolist()
+        
+        return json.JSONEncoder.default(self, obj)
 
 
 
@@ -85,12 +94,12 @@ def agg_scores(accs, x='observed', y='accuracy'):
 
 def save_iteration(res_path, p, i, res):
     with open(os.path.join(res_path,
-                           'details - {} - {}.json'.format(p,i)), 'w') as f:
-        json.dump(res, f, indent=1)
+                           'details - {} - {}.json'.format(i,p)), 'w') as f:
+        json.dump(res, f, indent=1, cls=NumpyAwareJSONEncoder)
 
 
 
-def save_results(res_path, exp_name, res):
+def save_results(res_path, exp_name, res, iter_n):
     hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
     
     # NOTE: turned off to conserve space
@@ -102,6 +111,9 @@ def save_results(res_path, exp_name, res):
         json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
                   f, indent=1)
 
+
+   
+        
 
     # markers = itertools.cycle('>^+*')   
     markers = itertools.repeat(None)   
@@ -215,7 +227,7 @@ if __name__ == '__main__':
     sample_p = bool(s['sample'])
     n_exps = int(s['n_exps'])
 
-    type_in = val_or_none(s, 'type')
+    gen_method_in = val_or_none(s, 'gen_method')
     skill_in = val_or_none(s, 'skill', lambda x: parse_skill(x))
     diff_in = val_or_none(s, 'diff')
     time_in = val_or_none(s, 'time')
@@ -301,7 +313,7 @@ if __name__ == '__main__':
             gt_thetas = gen_thetas(n_questions)
             gt_labels = np.round(gt_thetas)
             
-            if type_in != 'kg':
+            if gen_method_in != 'kg':
                 gt_thetas = None
                 
             platform = Platform(
@@ -322,22 +334,22 @@ if __name__ == '__main__':
             for s in (p['known_d'],p['known_s']):
                 assert s == 'True' or s == 'False'
 
+            if 'eval' in p:
+                post_inf = p['eval']
+            else:
+                post_inf = 'reg'
+                
+
             np.random.seed(rint)
             platform.reset()
-            if not p['type'].startswith('kg_'):
-                controller = Controller(method=p['type'],
-                                        platform=platform,
-                                        num_workers=platform.num_workers,
-                                        num_questions=platform.num_questions,
-                                        known_d=eval(p['known_d']),
-                                        known_s=eval(p['known_s']))
-            else:
-                controller = ControllerKG(method=p['type'],
-                                        platform=platform,
-                                        num_workers=platform.num_workers,
-                                        num_questions=platform.num_questions,
-                                        known_d=eval(p['known_d']),
-                                        known_s=eval(p['known_s']))
+            controller = Controller(method=p['type'],
+                                    platform=platform,
+                                    num_workers=platform.num_workers,
+                                    num_questions=platform.num_questions,
+                                    known_d=eval(p['known_d']),
+                                    known_s=eval(p['known_s']),
+                                    post_inf=post_inf)
+
                                     
             if 'offline' in p:
                 r = controller.run_offline()
@@ -346,10 +358,32 @@ if __name__ == '__main__':
 
             # store
             hist_detailed = r.pop('hist_detailed')
-#            if i < 5:
-#                save_iteration(os.path.join(res_path,'detailed'),
-#                               p['name'], i, hist_detailed)
+            if i < NUM_SAVE:
+                save_iteration(os.path.join(res_path,'detailed'),
+                               p['name'], i, hist_detailed)
             res[p['name']].append(r)
+        
 
-        # overwrite results in each iter
-        save_results(res_path, exp_name, res)
+
+        # save platform settings
+        if i < NUM_SAVE:
+            with open(os.path.join(
+                        res_path,
+                        'detailed',
+                        'gt_difficulties - {0}.json'.format(i)), 'w') as f:
+                 json.dump(platform.gt_difficulties.tolist(), f, indent=0)
+         
+            with open(os.path.join(
+                        res_path,
+                        'detailed',
+                        'gt_skills - {0}.json'.format(i)), 'w') as f:
+                json.dump(platform.gt_skills.tolist(), f, indent=0)
+        
+            with open(os.path.join(
+                        res_path,
+                        'detailed',
+                        'gt_labels - {0}.json'.format(i)), 'w') as f:
+                json.dump(platform.gt_labels.tolist(), f, indent=0)
+        
+        # save aggregate policy results (overwrite in each iter)
+        save_results(res_path, exp_name, res, i)

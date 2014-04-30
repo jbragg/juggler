@@ -27,6 +27,7 @@ class Platform():
         self.gt_labels = gt_labels
         self.num_questions = len(gt_labels)
         self.is_deterministic = True
+        self.gen_method = 'reg'
 
         if votes is not None:
             self.num_workers = votes.shape[0]
@@ -65,6 +66,7 @@ class Platform():
             # new kg method
             if thetas is not None:
                 difficulties = thetas
+                self.gen_method = 'kg'
             
             if not isinstance(skills, np.ndarray):
                 skills = skills or ODESK_SKILL_DIST
