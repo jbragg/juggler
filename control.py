@@ -18,6 +18,7 @@ import csv
 from ut import dbeta
 import json
 import os
+import time
 
 
 
@@ -1081,7 +1082,7 @@ class Controller():
         return votes_back
 
 
-    def update_and_score(self, votes, vote_alts=None):
+    def update_and_score(self, votes, vote_alts=None, timing=None):
         self.update_posteriors(votes)
 
         n_observed = len(self.get_votes('observed'))
@@ -1112,7 +1113,8 @@ class Controller():
                           'time': self.time_elapsed,
                           'accuracy': accuracy,
                           'exp_accuracy': exp_accuracy,
-                          'posterior': self.posteriors.tolist()})
+                          'posterior': self.posteriors.tolist(),
+                          'timing': timing})
 
         self.hist_detailed.append({'observed': n_observed,
                                    'time': self.time_elapsed,
@@ -1250,13 +1252,16 @@ class Controller():
                     #                         self.platform.gt_difficulties))
 
             # select votes
+            t1 = time.clock()
             next_votes, alternatives = self.select_votes()
+            t2 = time.clock()
 
             # make observations and update
             votes_back = self.observe(next_votes)
             if votes_back:
                 self.update_and_score(votes=votes_back,
-                                      vote_alts=alternatives)
+                                      vote_alts=alternatives,
+                                      timing=t2-t1)
             
 
 
