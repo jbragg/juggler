@@ -111,21 +111,31 @@ def save_results(res_path, exp_name, res, iter_n):
         json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
                   f, indent=1)
 
-    # save timings
-    with open(os.path.join(res_path, 'timings.csv'), 'wb') as f:
+    # save timings and detailed accuracies (for rebuttal)
+    with open(os.path.join(res_path, 'hist.csv'), 'wb') as f:
         to_csv = []
         for p in hist:
             for i,h in enumerate(hist[p]):
                 for d in h:
                     to_csv.append({'policy': p,
                                    'run': i,
+                                   'observed': d['observed'],
                                    'time': d['time'],
+                                   'accuracy': d['accuracy'],
+                                   'exp_accuracy': d['exp_accuracy'],
                                    'timing': d['timing']})
 
-        writer = csv.DictWriter(f, ['policy','run','time','timing'])
+
+        writer = csv.DictWriter(f, ['policy',
+                                    'run',
+                                    'observed',
+                                    'time',
+                                    'accuracy',
+                                    'exp_accuracy',
+                                    'timing'])
         writer.writeheader()
         writer.writerows(to_csv)
-        
+
 
     # markers = itertools.cycle('>^+*')   
     markers = itertools.repeat(None)   

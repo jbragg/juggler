@@ -652,7 +652,7 @@ class Controller():
         alternatives = []
 
         while len(acc) < self.num_workers:
-            workers_in_acc = [w for w,q in acc]
+            workers_in_acc = {w for w,q in acc}
             candidates = [(w,q) for w,q in unassigned_votes if
                           w not in workers_in_acc]
 
