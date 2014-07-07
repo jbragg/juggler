@@ -1,5 +1,3 @@
-#!/bin/env python
-
 from __future__ import division
 from collections import defaultdict
 import numpy as np
@@ -123,6 +121,7 @@ def save_results(res_path, exp_name, res, iter_n):
                                    'time': d['time'],
                                    'accuracy': d['accuracy'],
                                    'exp_accuracy': d['exp_accuracy'],
+                                   'duplicates': d['duplicates'],
                                    'timing': d['timing']})
 
 
@@ -132,6 +131,7 @@ def save_results(res_path, exp_name, res, iter_n):
                                     'time',
                                     'accuracy',
                                     'exp_accuracy',
+                                    'duplicates',
                                     'timing'])
         writer.writeheader()
         writer.writerows(to_csv)

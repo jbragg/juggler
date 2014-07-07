@@ -6,7 +6,8 @@
 "n_exps": "200",
 
 "votes": "",
-"skill":"gold",
+"skill":{"mean": "0.7936",
+         "std": "0.2861"},
 "diff":{"type": "beta",
         "params": [1,1]},
 "time": "0",

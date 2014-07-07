@@ -1082,7 +1082,8 @@ class Controller():
         return votes_back
 
 
-    def update_and_score(self, votes, vote_alts=None, timing=None):
+    def update_and_score(self, votes, vote_alts=None,
+                         votes_assigned=None, timing=None):
         self.update_posteriors(votes)
 
         n_observed = len(self.get_votes('observed'))
@@ -1109,11 +1110,22 @@ class Controller():
                      'skills': self.params['reg']['skills'].copy()}
             return params.copy()
         
+        # count number of times question is assigned at least two workers
+        # simultaneously
+        if votes_assigned:
+            counts = defaultdict(int)
+            for w,q in votes_assigned:
+                counts[q] += 1
+            duplicates = len([q for q in counts if counts[q] > 1])
+        else:
+            duplicates = None
+
         self.hist.append({'observed': n_observed,
                           'time': self.time_elapsed,
                           'accuracy': accuracy,
                           'exp_accuracy': exp_accuracy,
                           'posterior': self.posteriors.tolist(),
+                          'duplicates': duplicates,
                           'timing': timing})
 
         self.hist_detailed.append({'observed': n_observed,
@@ -1261,6 +1273,7 @@ class Controller():
             if votes_back:
                 self.update_and_score(votes=votes_back,
                                       vote_alts=alternatives,
+                                      votes_assigned = next_votes,
                                       timing=t2-t1)
             
 

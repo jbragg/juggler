@@ -1,7 +1,7 @@
 {
 "exp_name": "p-test-new3",
 "n_workers": "12",
-"n_questions": "198",
+"n_questions": "50",
 "sample": "True",
 "n_exps": "200",
 
