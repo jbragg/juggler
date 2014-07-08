@@ -650,40 +650,61 @@ class Controller():
 
         # store values considered when making decisions
         alternatives = []
+        inner_times = []
+        
+        assigned_workers = {w for w,q in acc}
+        unassigned_workers = {w for w in xrange(self.num_workers) if
+                              w not in assigned_workers}
+        if self.post_inf == 'reg':
+            workers_good_to_bad = sorted(
+                            unassigned_workers,
+                            key=lambda x: self.params['reg']['skills'][x])
+            workers_bad_to_good = list(workers_good_to_bad)
+            workers_bad_to_good.reverse()
 
+        candidates_all = defaultdict(list)
+        for w,q in unassigned_votes:
+            if w in unassigned_workers:
+                candidates_all[w].append((w,q))
+        
+        q_asked = np.sum(self.observations != -1, 0)
+        q_remaining = np.sum(self.observations == -1, 0)
+        q_assigned = np.zeros(self.num_questions)
+        for w,q in acc:
+            q_asked[q] += 1
+            q_assigned[q] += 1
+            q_remaining[q] -= 1
+        
         while len(acc) < self.num_workers:
-            workers_in_acc = {w for w,q in acc}
-            candidates = [(w,q) for w,q in unassigned_votes if
-                          w not in workers_in_acc]
-
             # no more votes remain unassigned for some workers, so break
-            if not candidates:
+            try:
+                itertools.chain.from_iterable(candidates_all.itervalues()).next()
+            except StopIteration:
                 # remaining_workers = workers_in_acc
                 # print 'Remaining workers: {}'.format(sorted(remaining_workers))
                 break
 
-            if self.post_inf == 'reg':
-                max_w,_ = min(candidates, key=lambda x: self.params['reg']['skills'][x[0]])
-                min_w,_ = max(candidates, key=lambda x: self.params['reg']['skills'][x[0]])
-
-
             # BUG: assumes uses best known skill (GT or MAP)
             if policy in ['greedy',
                           'accgain',
-                          'uncertainty']:
-                candidates = [c for c in candidates if c[0] == max_w]
+                          'uncertainty',
+                          'random']:
+                max_w = workers_bad_to_good.pop()
+                candidates = candidates_all[max_w]
+                # candidates = [(w,q) for w,q in candidates if q_assigned[q] == 0]
             elif policy in ['greedy_reverse',
                             'accgain_reverse',
                             'uncertainty_reverse']:
-                candidates = [c for c in candidates if c[0] == min_w]
+                min_w = workers_good_to_bad.pop()
+                candidates = candidates_all[min_w]
+                # candidates = [(w,q) for w,q in candidates if q_assigned[q] == 0]
+            else:
+                candidates = list(itertools.chain.from_iterable(candidates_all.itervalues()))
             #print "candidates: " + str(candidates)
 
+            t1 = time.clock()
             if policy == 'greedy' or policy == 'greedy_reverse':
                 # make sure ask once about each question
-                q_asked = np.sum(self.observations != -1, 0)
-                for w,q in acc:
-                    q_asked[q] += 1
-
                 if any(q_asked == 0):
                     candidates = [c for c in candidates if q_asked[c[1]] == 0]
 
@@ -735,11 +756,9 @@ class Controller():
                     acc.append(random.choice(candidates))
                     
             elif policy == 'rr':
-                q_remaining = np.sum(self.observations == -1, 0)
-                for w,q in acc:
-                    q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
                 max_remaining_votes = max(q_remaining[q] for q in q_opt)
+
                 q_opt = [q for q in q_opt if
                          q_remaining[q] == max_remaining_votes]
 
@@ -756,9 +775,6 @@ class Controller():
                 
             elif policy == 'rr_match':
                 assert self.known_difficulty and self.known_skill
-                q_remaining = np.sum(self.observations == -1, 0)
-                for w,q in acc:
-                    q_remaining[q] -= 1
                 q_opt = set(q for w,q in candidates)
                 max_remaining_votes = max(q_remaining[q] for q in q_opt)
                 q_opt = [q for q in q_opt if
@@ -873,7 +889,23 @@ class Controller():
             else:
                 raise Exception('Undefined policy')
 
+            t2 = time.clock()
+            # bookkeeping
+            assigned_w, assigned_q = acc[-1]
+            q_asked[assigned_q] += 1
+            q_assigned[assigned_q] += 1
+            q_remaining[assigned_q] -= 1
+            assigned_workers.add(assigned_w)
+            unassigned_workers.remove(assigned_w)
+            del candidates_all[assigned_w]
+
+            inner_times.append(t2-t1)
+            
+
 #        print "Lazy evaluations saved: {}".format(num_skipped)
+        print 'sum={:.1f}, u={:.3f}, len={} (inner)'.format(sum(inner_times),
+                                                            np.mean(inner_times),
+                                                            len(inner_times))
         return acc, alternatives
 
     # compute H(X | U)
@@ -1267,6 +1299,7 @@ class Controller():
             t1 = time.clock()
             next_votes, alternatives = self.select_votes()
             t2 = time.clock()
+            print '{:.1f} secs'.format(t2-t1)
 
             # make observations and update
             votes_back = self.observe(next_votes)
