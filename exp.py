@@ -90,11 +90,11 @@ def agg_scores(accs, x='observed', y='accuracy'):
 
     return points
 
-def save_iteration(res_path, p, i, res):
-    with open(os.path.join(res_path,
-                           'details - {} - {}.json'.format(i,p)), 'w') as f:
-        json.dump(res, f, indent=1, cls=NumpyAwareJSONEncoder)
-
+# def save_iteration(res_path, p, i, res):
+#     with open(os.path.join(res_path,
+#                            'details - {} - {}.json'.format(i,p)), 'w') as f:
+#         json.dump(res, f, indent=1, cls=NumpyAwareJSONEncoder)
+#
 
 
 def save_results(res_path, exp_name, res, iter_n):
@@ -226,6 +226,80 @@ def parse_skill(d):
 
 
 
+class Result():
+    """ Class for managing reuslts
+    """
+    def __init__(self, expdir, expname, maxcount=1):
+        self.expdir = expdir
+        self.expname = expname
+        self.runid = 0
+        self.runcounts = defaultdict(int)
+        self.maxcount = maxcount
+        
+        mkdir_or_ignore(os.path.join(expdir,'tables'))
+        
+        self.tables = {
+                  'history': ['run_id',
+                              't_',
+                              'action_',
+                              'observation',
+                              'reward',
+                              'timing',
+                              'state_',
+                              'actions',
+                              'other'],
+                  'runs': ['run_id',
+                           'policy',
+                           'policy_name',
+                           'experiment',
+                           'experiment_name',
+                           'seed',
+                           'info']}
+    
+    
+        for t in self.tables:
+            with open(self.tablepath(t),'w') as f:
+                writer = csv.DictWriter(f, self.tables[t])
+                writer.writeheader()
+            
+    def tablepath(self, t):
+        return os.path.join(self.expdir,
+                            'tables',
+                            self.expname+'-'+t+'.csv')
+    
+    
+    def update(self, history_rows, run_row):
+        
+        policy_name = run_row['policy_name']
+        d = {'history': history_rows,
+             'runs': [run_row]}
+    
+        for tab in self.tables:
+            with open(self.tablepath(tab),'a') as f:
+                writer = csv.DictWriter(f, self.tables[tab])
+                for row in d[tab]:
+                    row['run_id'] = self.runid
+                    
+                    # convert to json
+                    json_encoder = NumpyAwareJSONEncoder()
+                    if tab=='history':
+                        for k in ['observation', 'state_', 'other']:
+                            row[k] = json.dumps(row[k], cls=NumpyAwareJSONEncoder, sort_keys=True)
+                    if tab=='runs':
+                        for k in ['experiment', 'policy', 'info']:
+                            row[k] = json.dumps(row[k], cls=NumpyAwareJSONEncoder, sort_keys=True)
+
+                    # conserve space
+                    if tab=='history' and self.runcounts[policy_name] >= self.maxcount:
+                        row['state_'] = None
+                        row['observation'] = None
+                        
+                    writer.writerow(row)
+
+        self.runcounts[policy_name] += 1
+        self.runid += 1
+        
+
 #------------------- MAIN --------------------
 if __name__ == '__main__':
     if len(sys.argv) != 2:
@@ -259,6 +333,23 @@ if __name__ == '__main__':
     if subsample_in:
         subsample_in = int(subsample_in)
 
+    # prepare experiment version to store in table
+    experiment_json = {
+                          'n_workers': n_workers,
+                          'n_questions': n_questions,
+                          # 'sample': int(sample_p),?
+                  
+                          'votes': votes_in,
+                          'labels': labels_in,
+                          'diff': diff_in,
+                          'skill': skill_in,
+                          'time': time_in,
+
+                          'subsample': subsample_in,
+                          'gen_method': gen_method_in
+                      }
+    experiment_name_json = val_or_none(s, 'name')
+                  
     policies = s['policies']
 
     # load experimental data
@@ -291,18 +382,18 @@ if __name__ == '__main__':
 
     # prepare result directory
     mkdir_or_ignore('res')
-    res_path = os.path.join('res',exp_name)
+    res_path = os.path.join('res', exp_name)
     mkdir_or_ignore(res_path)
-    mkdir_or_ignore(os.path.join(res_path,'detailed'))
+    # mkdir_or_ignore(os.path.join(res_path, 'detailed'))
    
     # copy policy file
     import shutil
     shutil.copy(sys.argv[1], res_path)
 
-
+    res = Result(res_path, exp_name, maxcount=0)
 
     # run experiments
-    res = defaultdict(list)
+    policies_run = set()
 
     def first_array_or_true(lst):
         for e in lst:
@@ -313,7 +404,8 @@ if __name__ == '__main__':
 
 
     for i in xrange(n_exps):
-        rint = random.randint(0,sys.maxint)
+        # rint = random.randint(0,sys.maxint)
+        rint = i
         print '------------'
         print 'iteration: ' + str(i)
         np.random.seed(rint)
@@ -350,7 +442,7 @@ if __name__ == '__main__':
 
         # run
         for p in policies:
-            if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in res:
+            if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in policies_run:
                 continue
 
             for s in (p['known_d'],p['known_s']):
@@ -361,6 +453,10 @@ if __name__ == '__main__':
             else:
                 post_inf = 'reg'
                 
+            if 'maxdup' in p:
+                maxdup = p['maxdup']
+            else:
+                maxdup = float('inf')
 
             np.random.seed(rint)
             platform.reset()
@@ -370,6 +466,7 @@ if __name__ == '__main__':
                                     num_questions=platform.num_questions,
                                     known_d=eval(p['known_d']),
                                     known_s=eval(p['known_s']),
+                                    maxdup=maxdup,
                                     post_inf=post_inf)
 
                                     
@@ -379,33 +476,31 @@ if __name__ == '__main__':
                 r = controller.run()
 
             # store
-            hist_detailed = r.pop('hist_detailed')
-            if i < NUM_SAVE:
-                save_iteration(os.path.join(res_path,'detailed'),
-                               p['name'], i, hist_detailed)
-            res[p['name']].append(r)
+            # hist_detailed = r.pop('hist_detailed')
+            # if i < NUM_SAVE:
+            #     save_iteration(os.path.join(res_path,'detailed'),
+            #                    p['name'], i, hist_detailed)
+            
+            
+            policies_run.add(p['name'])
+            
         
 
+            
+            # save platform settings (don't have to do this every run, but we do)
+            runinfo = {'gt_difficulties': platform.gt_difficulties.tolist(),
+                       'gt_skills': platform.gt_skills.tolist(),
+                       'gt_labels': platform.gt_labels.tolist()}
+            
 
-        # save platform settings
-        if i < NUM_SAVE:
-            with open(os.path.join(
-                        res_path,
-                        'detailed',
-                        'gt_difficulties - {0}.json'.format(i)), 'w') as f:
-                 json.dump(platform.gt_difficulties.tolist(), f, indent=0)
-         
-            with open(os.path.join(
-                        res_path,
-                        'detailed',
-                        'gt_skills - {0}.json'.format(i)), 'w') as f:
-                json.dump(platform.gt_skills.tolist(), f, indent=0)
-        
-            with open(os.path.join(
-                        res_path,
-                        'detailed',
-                        'gt_labels - {0}.json'.format(i)), 'w') as f:
-                json.dump(platform.gt_labels.tolist(), f, indent=0)
-        
+            res.update(history_rows=r,
+                       run_row={'experiment_name': experiment_name_json,
+                                'experiment': experiment_json,
+                                'policy_name': p['name'],
+                                'policy': dict((k, p[k]) for k in p if k != 'name'),
+                                'seed': rint,
+                                'info': runinfo})
+
+
         # save aggregate policy results (overwrite in each iter)
-        save_results(res_path, exp_name, res, i)
+        # save_results(res_path, exp_name, res, i)

@@ -4,6 +4,7 @@ controllers"""
 from __future__ import division
 import numpy as np
 import itertools
+import collections
 from collections import defaultdict
 from scipy.misc import logsumexp
 from scipy.special import betainc
@@ -28,6 +29,7 @@ class Controller():
                  platform,
                  num_questions, num_workers,
                  known_s=True, known_d=True,
+                 maxdup=float('inf'),
                  post_inf='reg',
                  sample=True):
 
@@ -35,6 +37,7 @@ class Controller():
         self.method = method  
         self.platform = platform
         self.post_inf = post_inf
+        self.maxdup = maxdup
 
         self.prior = (1,1) # prior for diff (was prior for diff and label)
         self.sample = sample
@@ -701,6 +704,8 @@ class Controller():
             else:
                 candidates = list(itertools.chain.from_iterable(candidates_all.itervalues()))
             #print "candidates: " + str(candidates)
+            candidates = [(w,q) for w,q in candidates if
+                          q_assigned[q]<self.maxdup] or candidates
 
             t1 = time.clock()
             if policy == 'greedy' or policy == 'greedy_reverse':
@@ -903,9 +908,9 @@ class Controller():
             
 
 #        print "Lazy evaluations saved: {}".format(num_skipped)
-        print 'sum={:.1f}, u={:.3f}, len={} (inner)'.format(sum(inner_times),
-                                                            np.mean(inner_times),
-                                                            len(inner_times))
+#        print 'sum={:.1f}, u={:.3f}, len={} (inner)'.format(sum(inner_times),
+#                                                            np.mean(inner_times),
+#                                                            len(inner_times))
         return acc, alternatives
 
     # compute H(X | U)
@@ -1116,6 +1121,7 @@ class Controller():
 
     def update_and_score(self, votes, vote_alts=None,
                          votes_assigned=None, timing=None):
+                         
         self.update_posteriors(votes)
 
         n_observed = len(self.get_votes('observed'))
@@ -1144,29 +1150,45 @@ class Controller():
         
         # count number of times question is assigned at least two workers
         # simultaneously
+#        if votes_assigned:
+#            counts = defaultdict(int)
+#            for w,q in votes_assigned:
+#                counts[q] += 1
+#            duplicates = len([q for q in counts if counts[q] > 1])
+#        else:
+#            duplicates = None
+
+
         if votes_assigned:
-            counts = defaultdict(int)
-            for w,q in votes_assigned:
-                counts[q] += 1
-            duplicates = len([q for q in counts if counts[q] > 1])
+            duplicates = collections.Counter(collections.Counter([q for w,q in votes_assigned]).itervalues())
         else:
             duplicates = None
+        
+        
+        
+        workers = set(xrange(self.num_workers))
+        workers_remaining = set(w for w,q in self.get_votes('unobserved'))        
+        workers_finishing = workers.difference(workers_remaining).difference(
+                                                set(self.worker_finished))
+        # for w in workers_finishing:
+        #     self.worker_finished[w] = {'observed': n_observed,
+        #                                'time': self.time_elapsed}
+        #                                #'skill': 1/self.gt_skills[w]}
 
-        self.hist.append({'observed': n_observed,
-                          'time': self.time_elapsed,
-                          'accuracy': accuracy,
-                          'exp_accuracy': exp_accuracy,
-                          'posterior': self.posteriors.tolist(),
-                          'duplicates': duplicates,
-                          'timing': timing})
-
-        self.hist_detailed.append({'observed': n_observed,
-                                   'time': self.time_elapsed,
-                                   'votes': dict_to_json(votes),
-                                   'params': params_to_json(self.params),
-                                   'accuracy': accuracy,
-                                   'posterior': self.posteriors.tolist()})
-                                   
+        
+        if timing is not None:
+            self.hist[-1]['timing'] = timing
+        self.hist.append({  't_': self.time_elapsed,
+                            'observation': dict_to_json(votes),
+                            'state_': {'posterior': self.posteriors.tolist(),
+                                       'params': params_to_json(self.params)},
+                            'other': {'observed': n_observed,
+                                      'accuracy': accuracy,
+                                      'exp_accuracy': exp_accuracy,
+                                      'duplicates': duplicates,
+                                      'workers_finishing': list(workers_finishing)}
+                                      })
+        
                                   # 'votes': keys_to_str(votes)})
 
                           
@@ -1178,15 +1200,6 @@ class Controller():
 #                d['set'] = ['{},{}'.format(*t) for t in d['set']]
 #            self.hist_detailed[-1]['alternatives'] = vote_alts
         
-        
-        workers = set(xrange(self.num_workers))
-        workers_remaining = set(w for w,q in self.get_votes('unobserved'))        
-        workers_finishing = workers.difference(workers_remaining).difference(
-                                                set(self.worker_finished))
-        for w in workers_finishing:
-            self.worker_finished[w] = {'observed': n_observed,
-                                       'time': self.time_elapsed}
-                                       #'skill': 1/self.gt_skills[w]}
 
 
 
@@ -1246,9 +1259,10 @@ class Controller():
 
                    
     def get_results(self):
-        return {"hist": self.hist,
-                "hist_detailed": self.hist_detailed,
-                "when_finished": self.worker_finished}
+        return self.hist
+        # return {"hist": self.hist,
+        #         "hist_detailed": self.hist_detailed,
+        #         "when_finished": self.worker_finished}
 
 
 

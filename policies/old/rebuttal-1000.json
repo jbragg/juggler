@@ -1,5 +1,5 @@
 {
-"n_workers": "1000",
+"n_workers": "197",
 "n_questions": "198",
 "sample": "True",
 "n_exps": "100",
@@ -18,14 +18,13 @@
  "known_d": "True",
  "known_s": "True"
 },
-
-{"name": "Random",
- "type": "random",
+{"name": "Round robin",
+ "type": "rr",
  "known_d": "True",
  "known_s": "True"
 },
-{"name": "Round robin",
- "type": "rr",
+{"name": "Random",
+ "type": "random",
  "known_d": "True",
  "known_s": "True"
 },

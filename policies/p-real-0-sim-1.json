@@ -1,0 +1,58 @@
+{
+"name": "rounds: 12w198q, real-0-sim",
+"n_workers": "12",
+"n_questions": "198",
+"sample": "False",
+"n_exps": "100",
+
+"votes": "",
+"labels": "gold",
+"diff": {"type": "beta",
+         "params": [1,1]},
+"skill": {"mean": "0.7936",
+          "std": "0.2861"},
+"time": "0",
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin match",
+ "type": "rr_match",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse dup1",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1
+},
+{"name": "Greedy reverse dup2",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 2
+},
+{"name": "Greedy dup3",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 3
+}
+
+]
+}
