@@ -19,8 +19,6 @@ from control import Controller
 from simulator import Platform
 import parse
 
-NUM_SAVE = 5
-
 class NumpyAwareJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray) and obj.ndim == 1:
@@ -52,162 +50,6 @@ def est_final_params(gt_observations):
     parse.params_to_file('gold_params.csv',params)
     return d,s
         
-
-
-def agg_scores(accs, x='observed', y='accuracy'):
-    """Takes accuracies and computes averages and standard errors"""
-    if len(accs) == 1:
-        return [(d[x], d[y], None) for d in accs[0]]
-
-    points = []
-
-    def next_point(scores):
-        vals = [scores[i][y] for i in scores]
-        max_x = max(scores[i][x] for i in scores)
-        return (max_x, np.mean(vals), stats.sem(vals, ddof=0))
-
-    # NOTE: can improve efficiency
-    # assume first score is at t=0 and votes=0
-    accs = copy.deepcopy(accs)
-    scores = dict((i,accs[i].pop(0)) for i in xrange(len(accs)))
-    points.append(next_point(scores))
-
-    while sum(len(accs[i]) for i in xrange(len(accs))) > 0:
-
-        next_x = []
-        for i in xrange(len(accs)):
-            if len(accs[i]) > 0:
-                next_x.append(accs[i][0][x])
-            else:
-                next_x.append(None)
-
-        min_x = min(x for x in next_x if x is not None)
-        for i,v in enumerate(next_x):
-            if v == min_x:
-                scores[i] = accs[i].pop(0)
-
-        points.append(next_point(scores))
-
-    return points
-
-# def save_iteration(res_path, p, i, res):
-#     with open(os.path.join(res_path,
-#                            'details - {} - {}.json'.format(i,p)), 'w') as f:
-#         json.dump(res, f, indent=1, cls=NumpyAwareJSONEncoder)
-#
-
-
-def save_results(res_path, exp_name, res, iter_n):
-    hist = dict((p, [x['hist'] for x in res[p]]) for p in res)
-    
-    # NOTE: turned off to conserve space
-#    for p in res:
-#        with open(os.path.join(res_path, 'res - {}.json'.format(p)), 'w') as f:
-#            json.dump(res[p], f, indent=1)
-
-    with open(os.path.join(res_path, 'when_finished.json'), 'w') as f:
-        json.dump(dict((p, [d['when_finished'] for d in res[p]]) for p in res),
-                  f, indent=1)
-
-    # save timings and detailed accuracies (for rebuttal)
-    with open(os.path.join(res_path, 'hist.csv'), 'wb') as f:
-        to_csv = []
-        for p in hist:
-            for i,h in enumerate(hist[p]):
-                for d in h:
-                    to_csv.append({'policy': p,
-                                   'run': i,
-                                   'observed': d['observed'],
-                                   'time': d['time'],
-                                   'accuracy': d['accuracy'],
-                                   'exp_accuracy': d['exp_accuracy'],
-                                   'duplicates': d['duplicates'],
-                                   'timing': d['timing']})
-
-
-        writer = csv.DictWriter(f, ['policy',
-                                    'run',
-                                    'observed',
-                                    'time',
-                                    'accuracy',
-                                    'exp_accuracy',
-                                    'duplicates',
-                                    'timing'])
-        writer.writeheader()
-        writer.writerows(to_csv)
-
-
-    # markers = itertools.cycle('>^+*')   
-    markers = itertools.repeat(None)   
-    
-    for t in ('accuracy','exp_accuracy'):
-        policies = hist.keys()
-        scores = defaultdict(dict)
-        for p in policies:
-            #assert a[p].shape[1] == NUM_QUESTIONS + 1
-            scores['votes'][p] = agg_scores(hist[p],'observed',t)
-            scores['time'][p] = agg_scores(hist[p],'time',t)
-
-        # create figures and save data
-        for x_type in scores:
-            fname = 'plot_{}'.format(x_type)
-            if t == 'exp_accuracy':
-                fname = 'exp_' + fname
-
-            plt.close('all')
-                
-            with open(os.path.join(res_path, fname+'.csv'),'wb') as f:
-                writer = csv.writer(f) 
-                writer.writerow(['policy','x','y','stderr'])
-
-                for p in sorted(policies):
-                    x_val, mean, stderr = zip(*scores[x_type][p])
-                    if any(x is None for x in stderr):
-                        stderr = None
-                    else:
-                        stderr = [x * 1.96 for x in stderr]
-
-                    # plot with error bars
-                    next_marker = markers.next()
-
-                    plt.figure(0)
-                    plt.errorbar(x_val, mean, yerr=stderr,
-                                 marker=next_marker, label=p)
-
-                    # plot without 
-                    plt.figure(1)
-                    plt.plot(x_val, mean, marker=next_marker, label=p)
-
-                    # to file
-                    if stderr is None:
-                        stderr = itertools.repeat(None)
-
-                    for x,y,s in zip(x_val, mean, stderr):
-                        writer.writerow([p,x,y,s])
-
-
-            for i in xrange(2):
-                plt.figure(i)
-                plt.ylim(ymin=0.5,ymax=1)
-                plt.legend(loc="lower right")
-                if x_type == 'votes':
-                    xlabel = 'Number of votes observed'
-                elif x_type == 'time':
-                    xlabel = 'Time elapsed'
-                else:
-                    raise Exception
-                plt.xlabel(xlabel)
-                plt.ylabel('Prediction accuracy')
-
-            plt.figure(0)
-            with open(os.path.join(res_path, fname+'_err.png'),'wb') as f:
-                plt.savefig(f, format="png", dpi=150)
-
-            plt.figure(1)
-            with open(os.path.join(res_path, fname+'.png'),'wb') as f:
-                plt.savefig(f, format="png", dpi=150)
-
-
 
 def mkdir_or_ignore(d):
     try:
@@ -453,8 +295,8 @@ if __name__ == '__main__':
             else:
                 post_inf = 'reg'
                 
-            if 'maxdup' in p:
-                maxdup = p['maxdup']
+            if 'max_dup' in p:
+                maxdup = p['max_dup']
             else:
                 maxdup = float('inf')
 
@@ -475,13 +317,6 @@ if __name__ == '__main__':
             else:
                 r = controller.run()
 
-            # store
-            # hist_detailed = r.pop('hist_detailed')
-            # if i < NUM_SAVE:
-            #     save_iteration(os.path.join(res_path,'detailed'),
-            #                    p['name'], i, hist_detailed)
-            
-            
             policies_run.add(p['name'])
             
         
