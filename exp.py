@@ -16,7 +16,7 @@ import copy
 import itertools
 
 from control import Controller
-from platform import Platform
+from simulator import Platform
 import parse
 
 NUM_SAVE = 5
