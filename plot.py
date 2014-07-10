@@ -65,7 +65,7 @@ def plot(hist, res_path):
     #markers = itertools.cycle('>^+*')   
     markers = itertools.repeat(None)   
     
-    for t in ('accuracy','exp_accuracy','workers_per_task'):
+    for t in ('timing', 'accuracy','exp_accuracy','workers_per_task'):
         policies = hist.keys()
         scores = defaultdict(dict)
         for p in policies:
@@ -80,6 +80,9 @@ def plot(hist, res_path):
                 fname = 'exp_' + fname
             elif t == 'workers_per_task':
                 fname = 'dup_' + fname
+            elif t == 'timing':
+                fname = 'timing_' + fname
+
 
             plt.close('all')
                 
@@ -115,7 +118,7 @@ def plot(hist, res_path):
 
             for i in xrange(2):
                 plt.figure(i)
-                if t != 'workers_per_task':
+                if t not in ['workers_per_task', 'timing']:
                     plt.ylim(ymin=0.5,ymax=1)
                 plt.legend(loc="lower right")
                 if x_type == 'votes':
@@ -127,6 +130,8 @@ def plot(hist, res_path):
                 plt.xlabel(xlabel)
                 if t == 'workers_per_task':
                     plt.ylabel('Average workers per task')
+                elif t == 'timing':
+                    plt.ylabel('Runtime')
                 else:
                     plt.ylabel('Prediction accuracy')
 
@@ -174,13 +179,17 @@ def load_tables(expname):
                                                    other['duplicates'][k]) for
                                                   k in other['duplicates']))
                 duplicates = np.mean(list(duplicates_counter.elements()))
-            except TypeError:
+                timing = float(row['timing'])
+#            except TypeError:
+            except:
                 duplicates = 0
+                timing = 0
             res[policy][-1].append({
                         'observed': other['observed'],
                         'time': int(row['t_']),
                         'accuracy': other['accuracy'],
                         'exp_accuracy': other['exp_accuracy'],
+                        'timing': timing,
                         'workers_per_task': duplicates}
                         )
 
