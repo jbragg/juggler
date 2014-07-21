@@ -1,3 +1,4 @@
+from __future__ import division
 import itertools
 from collections import defaultdict, Counter
 import os
@@ -51,7 +52,7 @@ def agg_scores(accs, x='observed', y='accuracy'):
     return points
 
 
-def plot(hist, res_path):
+def plot(hist, runinfo, exp_name):
     """
     hist = {policy: [
                      [{'time': t,
@@ -62,19 +63,23 @@ def plot(hist, res_path):
                      [] # final iteration
                     ]}
     """
+
+    exp_path = os.path.join('res', exp_name)
+    res_path = os.path.join(exp_path, 'plots')
     #markers = itertools.cycle('>^+*')   
     markers = itertools.repeat(None)   
     
+    scores = dict()
     for t in ('timing', 'accuracy','exp_accuracy','workers_per_task'):
         policies = hist.keys()
-        scores = defaultdict(dict)
+        scores[t] = defaultdict(dict)
         for p in policies:
             #assert a[p].shape[1] == NUM_QUESTIONS + 1
-            scores['votes'][p] = agg_scores(hist[p],'observed',t)
-            scores['time'][p] = agg_scores(hist[p],'time',t)
+            scores[t]['votes'][p] = agg_scores(hist[p],'observed',t)
+            scores[t]['time'][p] = agg_scores(hist[p],'time',t)
 
         # create figures and save data
-        for x_type in scores:
+        for x_type in scores[t]:
             fname = 'plot_{}'.format(x_type)
             if t == 'exp_accuracy':
                 fname = 'exp_' + fname
@@ -91,7 +96,7 @@ def plot(hist, res_path):
                 writer.writerow(['policy','x','y','stderr'])
 
                 for p in sorted(policies):
-                    x_val, mean, stderr = zip(*scores[x_type][p])
+                    x_val, mean, stderr = zip(*scores[t][x_type][p])
                     if any(x is None for x in stderr):
                         stderr = None
                     else:
@@ -143,6 +148,37 @@ def plot(hist, res_path):
             with open(os.path.join(res_path, fname+'.png'),'wb') as f:
                 plt.savefig(f, format="png", dpi=150)
 
+    
+    with open(os.path.join(exp_path, exp_name + '.json')) as f:
+        exp_json = json.load(f)
+        n_exps = int(exp_json['n_exps'])
+
+    stats = defaultdict(dict)
+    with open(os.path.join(exp_path, 'stats.txt'), 'w') as f:
+        for p in hist:
+            f.write(p + ': ')
+            f.write
+            stats[p]['n_iters'] = len(hist[p])
+            stats[p]['mean_time'] = sum(x[1] for
+                                        x in scores['timing']['votes'][p]) / 60
+            f.write('{} iterations ({:.1f} mins / iteration)\n'.format(stats[p]['n_iters'], stats[p]['mean_time']))
+            f.write('\n')
+    
+        f.write('\n----------------\n')
+        n_policies = n_exps
+        if len(stats) == len(exp_json['policies']):
+            t_elapsed = 0
+            t_remaining = 0
+            for p in stats:
+                t_elapsed += stats[p]['n_iters'] * stats[p]['mean_time']
+                t_remaining += (n_exps - stats[p]['n_iters']) * \
+                               stats[p]['mean_time']
+        f.write('Elasped time > {:.1f} hours\n'.format(t_elapsed / 60))
+        f.write('Remaining time > {:.1f} hours\n'.format(t_remaining / 60))
+        f.write('\n')
+        f.write('Difficulties: {}, ...\n'.format(runinfo.itervalues().next()['gt_difficulties'][:10]))
+        f.write('\n')
+
 def load_tables(expname):
     """ Loads tables into memory for plot()
     """
@@ -151,18 +187,21 @@ def load_tables(expname):
     def tablepath(s):
         return os.path.join(tablesdir, expname+'-'+s+'.csv')
 
-    runid_to_policy_seed = dict()
+    runid_to_policy = dict()
     with open(tablepath('runs'), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            runid_to_policy_seed[row['run_id']] = (row['policy_name'],
-                                                        int(row['seed']))
+            runid_to_policy[row['run_id']] = (row['policy_name'],
+                                              int(row['seed']),
+                                              json.loads(row['info']))
 
+    runinfo = dict()
     res = defaultdict(list)
     with open(tablepath('history'), 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            policy, seed = runid_to_policy_seed[row['run_id']]
+            policy, seed, info = runid_to_policy[row['run_id']]
+            runinfo[seed] = info
 
             # NOTE: assumes history written in order (which it was)
             if seed == len(res[policy]):
@@ -193,7 +232,7 @@ def load_tables(expname):
                         'workers_per_task': duplicates}
                         )
 
-    return res
+    return res, runinfo
 
 
 if __name__ == '__main__':
@@ -205,9 +244,9 @@ if __name__ == '__main__':
     #parser.add_argument('-i', '--maxiter', default=-1, type=int,
     #                    help='maximum iterations/policy for detailed plots')
     args = parser.parse_args()
-    res = load_tables(args.expname)
+    res, runinfo = load_tables(args.expname)
     plotdir = os.path.join('res', args.expname, 'plots')
     pyphd.ensure_dir(plotdir)
-    plot(res, plotdir)
+    plot(res, runinfo, args.expname)
 
     #make_plots(args.expname, args.policies, args.maxiter)

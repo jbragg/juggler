@@ -18,6 +18,7 @@ import itertools
 from control import Controller
 from simulator import Platform
 import parse
+import pyphd
 
 class NumpyAwareJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -172,6 +173,7 @@ if __name__ == '__main__':
     votes_in = val_or_none(s, 'votes')
     labels_in = val_or_none(s, 'labels')
     subsample_in = val_or_none(s, 'subsample')
+    max_rounds_in = pyphd.dict_val_or(s, 'max_rounds', float('inf'))
     if subsample_in:
         subsample_in = int(subsample_in)
 
@@ -287,29 +289,13 @@ if __name__ == '__main__':
             if run_once and p['type'] in ['greedy','greedy_reverse','accgain','accgain_reverse'] and p['name'] in policies_run:
                 continue
 
-            for s in (p['known_d'],p['known_s']):
-                assert s == 'True' or s == 'False'
-
-            if 'eval' in p:
-                post_inf = p['eval']
-            else:
-                post_inf = 'reg'
-                
-            if 'max_dup' in p:
-                maxdup = p['max_dup']
-            else:
-                maxdup = float('inf')
-
             np.random.seed(rint)
             platform.reset()
-            controller = Controller(method=p['type'],
+            controller = Controller(policy=p,
                                     platform=platform,
                                     num_workers=platform.num_workers,
                                     num_questions=platform.num_questions,
-                                    known_d=eval(p['known_d']),
-                                    known_s=eval(p['known_s']),
-                                    maxdup=maxdup,
-                                    post_inf=post_inf)
+                                    max_rounds=max_rounds_in)
 
                                     
             if 'offline' in p:

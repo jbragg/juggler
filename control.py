@@ -20,41 +20,57 @@ from ut import dbeta
 import json
 import os
 import time
-
+import munkres
+import pyphd
 
 
 
 class Controller():
-    def __init__(self, method,
+    def __init__(self, policy,
                  platform,
                  num_questions, num_workers,
-                 known_s=True, known_d=True,
-                 maxdup=float('inf'),
-                 post_inf='reg',
-                 sample=True):
+                 sample=True,
+                 max_rounds=float('inf'),
+                 num_bins=10):
 
+        # parse policy and set defaults
         # method can be 'random', 'rr', 'greedy', 'greedy_reverse"
-        self.method = method  
+        self.policy = policy
+        self.max_rounds = max_rounds
+        self.method = policy['type']
+        for s in (policy['known_d'],policy['known_s']):
+            assert s == 'True' or s == 'False'
+        self.known_difficulty = eval(policy['known_d'])
+        self.known_skill = eval(policy['known_s'])
+        self.post_inf = pyphd.dict_val_or(policy, 'eval', 'reg')
+        self.maxdup = pyphd.dict_val_or(policy, 'max_dup', float('inf'))
+        self.at_least_once = bool(pyphd.dict_val_or(policy,
+                                                    'at_least_once',
+                                                    False))
+
         self.platform = platform
-        self.post_inf = post_inf
-        self.maxdup = maxdup
+        self.gt_labels = platform.gt_labels
+
+        self.bin_hash = dict()
 
         self.prior = (1,1) # prior for diff (was prior for diff and label)
         self.sample = sample
 
-        self.known_difficulty = known_d
-        self.known_skill = known_s
-        self.gt_labels = platform.gt_labels
-
-        if known_s:
+        if self.known_skill:
             self.gt_skills = platform.gt_skills
             assert self.gt_skills is not None
+            self.gt_skills_bins = np.linspace(min(self.gt_skills),
+                                              max(self.gt_skills),
+                                              num_bins)
         else:
             self.gt_skills = None
 
-        if known_d:
+        if self.known_difficulty:
             self.gt_difficulties = platform.gt_difficulties
             assert self.gt_difficulties is not None
+            self.gt_difficulties_bins = np.linspace(min(self.gt_difficulties),
+                                                    max(self.gt_difficulties),
+                                                    num_bins)
         else:
             self.gt_difficulties = None
 
@@ -141,6 +157,15 @@ class Controller():
 
         return [v for v in self.vote_status if f(self.vote_status[v])]
 
+
+    def to_bin(self, f, t='question'):
+        """ Takes float of question difficulty or worker skill (depending on t)
+            and returns bin number
+        """
+        if t == 'question':
+            pass     
+        elif t == 'worker':
+            pass
 
     #--------- probability --------
     def prob_correct(self, s, d):
@@ -665,19 +690,106 @@ class Controller():
             workers_bad_to_good = list(workers_good_to_bad)
             workers_bad_to_good.reverse()
 
-        candidates_all = defaultdict(list)
+        candidates_all = defaultdict(set)
         for w,q in unassigned_votes:
             if w in unassigned_workers:
-                candidates_all[w].append((w,q))
+                candidates_all[w].add((w,q))
         
         q_asked = np.sum(self.observations != -1, 0)
         q_remaining = np.sum(self.observations == -1, 0)
         q_assigned = np.zeros(self.num_questions)
+
+#        q_asked_0 = np.sum(self.observations == 0, 0)
+#        q_asked_1 = np.sum(self.observations == 1, 0)
+        
+        # add up 0/1 for each worker bin
+
         for w,q in acc:
             q_asked[q] += 1
             q_assigned[q] += 1
             q_remaining[q] -= 1
-        
+
+#        print self.gt_difficulties_bins
+#        print np.digitize(self.gt_skills, self.gt_skills_bins)
+        # set eval function
+#        def eval_f(c, acc):
+#            w,q = c
+#
+#            assigned_skills = []
+#            for w_,q_ in acc:
+#                if q_ == q:
+#                    assigned_skills.append(self.gt_skills(w_))
+#                    
+#            hash_key = 
+#            
+#            worker_
+#            self.bin_hash()
+
+#    - question difficulty bin
+#    - worker skill bin
+#
+#    for each worker bin:
+#        - number of true votes
+#        - number of false votes
+#        - number of workers assigned but not observed
+
+        if policy in ['greedy', 'greedy_reverse', 'greedy_matching']:
+            eval_f = lambda c: self.hXA(acc, c) - self.hXU(acc, c)
+        elif policy in ['accgain', 'accgain_reverse', 'accgain_matching']:
+            eval_f = lambda c: self.acc_gain(acc, [c])
+        elif policy == 'greedy_ent':
+            eval_f = lambda c: self.hXA(acc, c)
+
+        #--- policies
+        if policy in ['greedy_matching', 'accgain_matching']:
+            # NOTE: calculate for all questions, including in acc
+            # TODO: allow evaluation by accuracy gain too
+
+            MAX_WEIGHT_INT = 100 # can't be too large...
+
+            # build matrix
+            worker_indices = sorted(unassigned_workers)
+#            question_indices = np.where(q_assigned==0)[0]
+            question_indices = range(self.num_questions)
+            m = []
+            for i,w in enumerate(worker_indices):
+                m.append([])
+                for q in question_indices:
+                    c = (w,q)
+                    if c in candidates_all[w]:
+                        profit = 20*eval_f(c)
+                    else:
+#                        print "don't add {}".format(c)
+                        profit = 0
+
+                    # if enabled, boost scores for unasked questions
+                    # NOTE: assumes profit never exceeds MAX_WEIGHT_INT / 2
+                    if self.at_least_once and q_asked[q]==0:
+                        profit = profit + MAX_WEIGHT_INT / 2
+                        print 'Increased profit for {} ({} to {})'.format(c, profit - MAX_WEIGHT_INT / 2, profit)
+
+
+
+                    cost = MAX_WEIGHT_INT - profit
+#                    print cost
+                    m[i].append(cost)
+            
+#            print m
+#            munkres.print_matrix(m)
+            sol_indices = munkres.Munkres().compute(m)
+#            print sol_indices
+            for i,j in sol_indices:
+                w = worker_indices[i]
+                q = question_indices[j]
+                if (w,q) in candidates_all[w]:
+                    acc.append((w,q))
+                else:
+                    # TODO: double-check
+                    q_indices = [_q for w,_q in candidates_all[w]]
+                    q_new = min(q_indices, key=lambda q_: m[w][q_])
+                    acc.append((w,q_new))
+                
+
         while len(acc) < self.num_workers:
             # no more votes remain unassigned for some workers, so break
             try:
@@ -708,36 +820,18 @@ class Controller():
                           q_assigned[q]<self.maxdup] or candidates
 
             t1 = time.clock()
-            if policy == 'greedy' or policy == 'greedy_reverse':
-                # make sure ask once about each question
-                if any(q_asked == 0):
+            if policy in ['greedy', 'greedy_reverse',
+                          'accgain', 'accgain_reverse',
+                          'greedy_ent']:
+                # if enabled, make sure ask once about each question
+                if self.at_least_once and any(q_asked == 0):
                     candidates = [c for c in candidates if q_asked[c[1]] == 0]
 
                 # same as before
-                evals = dict((c, self.hXA(acc, c) - self.hXU(acc, c)) for
-                             c in candidates)
+#                t1 = time.clock()
+                evals = dict((c, eval_f(c)) for c in candidates)
+#                t2 = time.clock()
                         
-                top = max(evals, key=lambda k:evals[k])
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
-
-            elif policy == 'accgain' or policy == 'accgain_reverse':
-                evals = dict((c, self.acc_gain(acc, [c])) for
-                             c in candidates)
-                
-
-                top = max(evals, key=lambda k:evals[k])
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
-
-            elif policy == 'greedy_ent':
-                evals = dict((c, self.hXA(acc, c)) for
-                             c in candidates)
-
                 top = max(evals, key=lambda k:evals[k])
                 acc.append(top)
                 alternatives.append({'selected': top,
@@ -908,9 +1002,9 @@ class Controller():
             
 
 #        print "Lazy evaluations saved: {}".format(num_skipped)
-#        print 'sum={:.1f}, u={:.3f}, len={} (inner)'.format(sum(inner_times),
-#                                                            np.mean(inner_times),
-#                                                            len(inner_times))
+        print 'sum={:.1f}, u={:.3f}, len={} (inner)'.format(sum(inner_times),
+                                                            np.mean(inner_times),
+                                                            len(inner_times))
         return acc, alternatives
 
     # compute H(X | U)
@@ -1300,7 +1394,8 @@ class Controller():
         self.update_and_score(votes=[])
 
 
-        while len(self.get_votes('unobserved')) > 0:
+        rounds = 0
+        while len(self.get_votes('unobserved')) > 0 and rounds < self.max_rounds:
             print 'Remaining votes: {0:4d}'.format(
                     len(self.get_votes('unobserved')))
 
@@ -1322,6 +1417,8 @@ class Controller():
                                       vote_alts=alternatives,
                                       votes_assigned = next_votes,
                                       timing=t2-t1)
+
+            rounds += 1
             
 
 
