@@ -1,0 +1,53 @@
+{
+"name": "large",
+"n_workers": "100",
+"n_questions": "2000",
+"sample": "False",
+"n_exps": "100",
+
+"votes": "",
+"labels": "",
+"diff": {"type": "beta",
+         "params": [1,1]},
+"skill": {"mean": "0.7936",
+          "std": "0.2861"},
+"time": "0",
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Uncertainty",
+ "type": "uncertainty",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse dup1",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1
+},
+{"name": "Greedy reverse dup2",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 2
+},
+{"name": "Greedy dup3",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 3
+}
+
+]
+}
