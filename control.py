@@ -937,7 +937,7 @@ class Controller():
                             break
 
     
-                    print 'adding {}'.format((next_w, next_q))
+                    # print 'adding {}'.format((next_w, next_q))
                     acc.append((next_w, next_q))
 
                     for w in xrange(self.num_workers):

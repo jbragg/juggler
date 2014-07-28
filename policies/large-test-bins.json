@@ -23,7 +23,25 @@
  "max_dup": 1,
  "efficient": 1,
  "num_bins": 20
+},
+{"name": "Greedy reverse dup1 efficient",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1,
+ "efficient": 1,
+ "num_bins": 40
+},
+{"name": "Greedy reverse dup1 efficient",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1,
+ "efficient": 1,
+ "num_bins": 80
 }
+
+
 
 ]
 }
