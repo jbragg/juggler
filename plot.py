@@ -173,8 +173,8 @@ def plot(hist, runinfo, exp_name):
                 t_elapsed += stats[p]['n_iters'] * stats[p]['mean_time']
                 t_remaining += (n_exps - stats[p]['n_iters']) * \
                                stats[p]['mean_time']
-        f.write('Elasped time > {:.1f} hours\n'.format(t_elapsed / 60))
-        f.write('Remaining time > {:.1f} hours\n'.format(t_remaining / 60))
+            f.write('Elasped time > {:.1f} hours\n'.format(t_elapsed / 60))
+            f.write('Remaining time > {:.1f} hours\n'.format(t_remaining / 60))
         f.write('\n')
         f.write('Difficulties: {}, ...\n'.format(runinfo.itervalues().next()['gt_difficulties'][:10]))
         f.write('\n')

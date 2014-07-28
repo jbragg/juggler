@@ -16,23 +16,12 @@
 
 "policies":
 [
-{"name": "Greedy reverse dup1",
+{"name": "Greedy reverse dup1 efficient",
  "type": "greedy_reverse",
  "known_d": "True",
  "known_s": "True",
- "max_dup": 1
-},
-{"name": "Greedy reverse dup2",
- "type": "greedy_reverse",
- "known_d": "True",
- "known_s": "True",
- "max_dup": 2
-},
-{"name": "Greedy dup3",
- "type": "greedy_reverse",
- "known_d": "True",
- "known_s": "True",
- "max_dup": 3
+ "max_dup": 1,
+ "efficient": 1
 }
 
 ]

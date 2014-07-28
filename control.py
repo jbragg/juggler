@@ -22,7 +22,7 @@ import os
 import time
 import munkres
 import pyphd
-
+from extra import PlotController
 
 
 class Controller():
@@ -47,33 +47,61 @@ class Controller():
         self.at_least_once = bool(pyphd.dict_val_or(policy,
                                                     'at_least_once',
                                                     False))
+        self.policy['efficient'] = bool(pyphd.dict_val_or(policy,
+                                                          'efficient',
+                                                          False))
+
 
         self.platform = platform
         self.gt_labels = platform.gt_labels
 
-        self.bin_hash = dict()
+#        self.bin_hash = dict()
+        self.q_queue = []
+        self.q_to_add = [] # list of questions to add to self.q_queue
 
         self.prior = (1,1) # prior for diff (was prior for diff and label)
         self.sample = sample
 
+        self.bins = dict()
+        self.bin_midpoints = dict()
         if self.known_skill:
             self.gt_skills = platform.gt_skills
             assert self.gt_skills is not None
-            self.gt_skills_bins = np.linspace(min(self.gt_skills),
-                                              max(self.gt_skills),
-                                              num_bins)
+            self.bins['gt_skills'] = np.linspace(min(self.gt_skills),
+                                                 max(self.gt_skills),
+                                                 num_bins+1)
+            self.bin_midpoints['gt_skills'] = pyphd.bin_midpoints(self.bins['gt_skills'])
         else:
             self.gt_skills = None
 
         if self.known_difficulty:
             self.gt_difficulties = platform.gt_difficulties
             assert self.gt_difficulties is not None
-            self.gt_difficulties_bins = np.linspace(min(self.gt_difficulties),
-                                                    max(self.gt_difficulties),
-                                                    num_bins)
+            self.bins['gt_difficulties'] = np.linspace(0, 1, num_bins+1)
+            self.bin_midpoints['gt_difficulties'] = pyphd.bin_midpoints(self.bins['gt_difficulties'])
+            
         else:
             self.gt_difficulties = None
 
+        self.bins['posteriors'] = np.linspace(0, 1, num_bins+1)
+        self.bin_midpoints['posteriors'] = pyphd.bin_midpoints(self.bins['posteriors'])
+        
+        # calculate bin values for entropy gain and accuracy gain
+        # HACK
+        sub_controller = PlotController(skills=1/np.array(self.gt_skills),
+                                        difficulties=self.bin_midpoints['gt_difficulties'],
+                                        posteriors=self.bin_midpoints['posteriors'])
+        self.bin_values = dict()
+        self.bin_orders = dict()
+        self.bin_values['ent'] = sub_controller.get_bin_values(method='entropy')
+        self.bin_values['acc'] = sub_controller.get_bin_values(method='accuracy')
+        for k in ['ent','acc']:
+            self.bin_orders[k] = dict()
+            for w in self.bin_values[k]:
+                d = pyphd.array_to_dict(self.bin_values[k][w])
+                self.bin_orders[k][w] = sorted(d,
+                                               key=lambda x: d[x],
+                                               reverse=True)
 
         self.num_questions = num_questions
         self.num_workers = num_workers
@@ -91,6 +119,8 @@ class Controller():
         
         # other initialization
         self.reset()
+        self.update_posteriors([])
+        self.init_bins()
 #        self.posteriors = self.prior[0] / (self.prior[0] + self.prior[1]) * \
 #                          np.ones(num_questions)
 #        self.posteriors = 0.5 * np.ones(self.num_questions)
@@ -142,6 +172,26 @@ class Controller():
         self.observations = np.zeros((self.num_workers, self.num_questions))-1
         return
 
+    def init_bins(self):
+        """Initialize question bin locations, based on posterior and difficulty
+        """
+        self.bin_to_q = dict()
+        for w in xrange(self.num_workers):
+            self.bin_to_q[w] = defaultdict(set)
+
+        self.set_bins(xrange(self.num_questions))
+
+    
+    def set_bins(self, questions):
+        """Set bins
+        """
+        for q in questions:
+            for w in xrange(self.num_workers):
+                _, question_bin = self.to_bin((None, q))
+                if self.vote_status[w,q] is None:
+                    self.bin_to_q[w][question_bin].add(q)
+
+        
     #--------- utility -------------
     def get_votes(self, status):
         if status == 'unassigned':
@@ -158,15 +208,29 @@ class Controller():
         return [v for v in self.vote_status if f(self.vote_status[v])]
 
 
-    def to_bin(self, f, t='question'):
-        """ Takes float of question difficulty or worker skill (depending on t)
-            and returns bin number
+    def to_bin(self, vote):
         """
-        if t == 'question':
-            pass     
-        elif t == 'worker':
-            pass
-
+        input: vote (w,q)
+        output: worker bin, question bin
+        """
+        w,q = vote
+        if w is None:
+            worker_bin = None
+        else:
+            worker_bin = pyphd.digitize_right_closed([self.gt_skills[w]],  
+                                                     self.bins['gt_skills'])[0]
+        
+        if q is None:
+            question_bin = None
+        else:
+            diff_bin = pyphd.digitize_right_closed([self.gt_difficulties[q]],
+                                                   self.bins['gt_difficulties'])[0]
+            posterior_bin = pyphd.digitize_right_closed([self.posteriors[q]],
+                                                        self.bins['posteriors'])[0]
+            question_bin = (diff_bin, posterior_bin)
+        
+        return (worker_bin, question_bin)
+        
     #--------- probability --------
     def prob_correct(self, s, d):
         """p_correct = 1/2(1+(1-d_q)^(1/skill)"""
@@ -699,46 +763,43 @@ class Controller():
         q_remaining = np.sum(self.observations == -1, 0)
         q_assigned = np.zeros(self.num_questions)
 
-#        q_asked_0 = np.sum(self.observations == 0, 0)
-#        q_asked_1 = np.sum(self.observations == 1, 0)
-        
-        # add up 0/1 for each worker bin
-
         for w,q in acc:
             q_asked[q] += 1
             q_assigned[q] += 1
             q_remaining[q] -= 1
 
-#        print self.gt_difficulties_bins
-#        print np.digitize(self.gt_skills, self.gt_skills_bins)
-        # set eval function
-#        def eval_f(c, acc):
-#            w,q = c
-#
-#            assigned_skills = []
-#            for w_,q_ in acc:
-#                if q_ == q:
-#                    assigned_skills.append(self.gt_skills(w_))
-#                    
-#            hash_key = 
-#            
-#            worker_
-#            self.bin_hash()
-
-#    - question difficulty bin
-#    - worker skill bin
-#
-#    for each worker bin:
-#        - number of true votes
-#        - number of false votes
-#        - number of workers assigned but not observed
-
+        # define evaluation functions
         if policy in ['greedy', 'greedy_reverse', 'greedy_matching']:
-            eval_f = lambda c: self.hXA(acc, c) - self.hXU(acc, c)
+            eval_f = lambda c, acc: self.ent_gain(acc, c)
+            eval_metric= 'ent'
         elif policy in ['accgain', 'accgain_reverse', 'accgain_matching']:
-            eval_f = lambda c: self.acc_gain(acc, [c])
+            eval_f = lambda c, acc: self.acc_gain(acc, [c])
+            eval_metric = 'acc'
         elif policy == 'greedy_ent':
-            eval_f = lambda c: self.hXA(acc, c)
+            eval_f = lambda c, acc: self.hXA(acc, c)
+
+        def eval_f_approx(c, metric):
+            skill_bin, question_bin = self.to_bin(c)
+            return self.bin_values[metric][skill_bin][question_bin]
+                                                
+        
+        # # arbitrarily use worker 0 to evaluate question value
+        # # POSSIBLE BUG: what if worker 0 is in acc?
+        # eval_f_gen = lambda q, acc: eval_f((0, q), acc)
+        #
+        # # hack to load all questions into the queue at the first time step
+        # if self.policy['efficient'] and np.sum(q_asked) == 0:
+        #     self.q_to_add = range(self.num_questions)
+        #
+        # # add questions asked or skipped back into the queue
+        # # NOTE: re-evaluating skipped questions when we may not need to do so
+        # while len(self.q_to_add) > 0:
+        #     # evaluate and use negative value to use min heap as max heap
+        #     q_ = self.q_to_add.pop()
+        #     v = -1 * eval_f_gen(q_, acc)
+        #     print 'adding (v, q_)'
+        #     heapq.heappush(self.q_queue, (v, q_))
+
 
         #--- policies
         if policy in ['greedy_matching', 'accgain_matching']:
@@ -757,7 +818,7 @@ class Controller():
                 for q in question_indices:
                     c = (w,q)
                     if c in candidates_all[w]:
-                        profit = 20*eval_f(c)
+                        profit = 20*eval_f(c, acc)
                     else:
 #                        print "don't add {}".format(c)
                         profit = 0
@@ -767,8 +828,6 @@ class Controller():
                     if self.at_least_once and q_asked[q]==0:
                         profit = profit + MAX_WEIGHT_INT / 2
                         print 'Increased profit for {} ({} to {})'.format(c, profit - MAX_WEIGHT_INT / 2, profit)
-
-
 
                     cost = MAX_WEIGHT_INT - profit
 #                    print cost
@@ -788,10 +847,21 @@ class Controller():
                     q_indices = [_q for w,_q in candidates_all[w]]
                     q_new = min(q_indices, key=lambda q_: m[w][q_])
                     acc.append((w,q_new))
-                
+             
+        if policy in ['greedy',
+                      'accgain',
+                      'uncertainty',
+                      'random']:
+            workers_sorted = list(workers_bad_to_good) 
+        elif policy in ['greedy_reverse',
+                        'accgain_reverse',
+                        'uncertainty_reverse']:
+            workers_sorted = list(workers_good_to_bad) 
+          
 
         while len(acc) < self.num_workers:
             # no more votes remain unassigned for some workers, so break
+
             try:
                 itertools.chain.from_iterable(candidates_all.itervalues()).next()
             except StopIteration:
@@ -805,38 +875,91 @@ class Controller():
                           'uncertainty',
                           'random']:
                 max_w = workers_bad_to_good.pop()
-                candidates = candidates_all[max_w]
+                next_w = max_w
+                # BUG: we have deleted max_w from candidates_all in 'efficient' mode
+                candidates = list(candidates_all[max_w])
                 # candidates = [(w,q) for w,q in candidates if q_assigned[q] == 0]
             elif policy in ['greedy_reverse',
                             'accgain_reverse',
                             'uncertainty_reverse']:
                 min_w = workers_good_to_bad.pop()
-                candidates = candidates_all[min_w]
+                next_w = min_w
+                # BUG: we have deleted max_w from candidates_all in 'efficient' mode
+                candidates = list(candidates_all[min_w])
                 # candidates = [(w,q) for w,q in candidates if q_assigned[q] == 0]
             else:
                 candidates = list(itertools.chain.from_iterable(candidates_all.itervalues()))
             #print "candidates: " + str(candidates)
+            # TODO: make this a generator
             candidates = [(w,q) for w,q in candidates if
-                          q_assigned[q]<self.maxdup] or candidates
+                          q_assigned[q]<self.maxdup] or list(candidates)
 
             t1 = time.clock()
             if policy in ['greedy', 'greedy_reverse',
                           'accgain', 'accgain_reverse',
                           'greedy_ent']:
                 # if enabled, make sure ask once about each question
-                if self.at_least_once and any(q_asked == 0):
-                    candidates = [c for c in candidates if q_asked[c[1]] == 0]
+                restricted_p = self.at_least_once and any(q_asked == 0)
+                if restricted_p:
+                    candidates = [c for c in candidates if q_asked[c[1]] == 0] or list(candidates)
 
-                # same as before
-#                t1 = time.clock()
-                evals = dict((c, eval_f(c)) for c in candidates)
-#                t2 = time.clock()
-                        
-                top = max(evals, key=lambda k:evals[k])
-                acc.append(top)
-                alternatives.append({'selected': top,
-                                     'set': acc[:-1],
-                                     'heuristic': evals.copy()})
+                # t1 = time.clock()
+                # t2 = time.clock()
+                # evals = dict((c, eval_f(c, acc)) for c in candidates)
+                if restricted_p or not self.policy['efficient']:
+                    evals = dict()
+                    for c in candidates:
+                        # if self.policy['efficient'] and q_assigned[c[1]] == 0:
+                        #     evals[w,q] = eval_f_approx(c, eval_metric)
+                        # else:
+                        evals[w,q] = eval_f(c, acc)
+
+
+                    top = max(evals, key=lambda k:evals[k])
+                    acc.append(top)
+                    alternatives.append({'selected': top,
+                                         'set': acc[:-1],
+                                         'heuristic': evals.copy()})
+                # # efficient version
+                else:
+                    bin_order = self.bin_orders[eval_metric][next_w]
+                    # print 'skill bin: {}'.format(skill_bin)
+
+                    next_q = None
+                    for b in bin_order:
+                        bin_questions = self.bin_to_q[w][b]
+                        if len(bin_questions) > 0:
+                            next_q = bin_questions.pop()
+                            next_bin = b
+                            break
+
+    
+                    print 'adding {}'.format((next_w, next_q))
+                    acc.append((next_w, next_q))
+
+                    for w in xrange(self.num_workers):
+                        self.bin_to_q[w][b].discard(next_q)
+                
+                
+                #     #                    print 'queue: {}'.format(len(self.q_queue))
+                #     next_w = None
+                #     while next_w is None:
+                #         try:
+                #             _, next_q = heapq.heappop(self.q_queue)
+                #             for w in reversed(workers_sorted):
+                #                 if (w, next_q) in candidates_all[w]:
+                #                     next_w = w
+                #                     break
+                #
+                #             if q_remaining[next_q] > 1:
+                #                 self.q_to_add.append(next_q)
+                #
+                #         # no questions in queue
+                #         except IndexError:
+                #             raise 'What do we do?'
+                #     acc.append((next_w, next_q))
+                #     workers_sorted.remove(next_w)
+
 
             elif policy == 'local_s':
                 # Use local search to select argmin H(U|A)
@@ -1120,11 +1243,20 @@ class Controller():
 
         return hXA
 
+    def ent_gain(self, acc, c):
+        """Entropy gain
+        
+        c:      vote to add
+        acc:    list of votes already being asked
+        """
+        return self.hXA(acc, c) - self.hXU(acc, c)
+
     def acc_gain(self, acc, x):
         """Exact expected accuracy gain (change to sampling if slow)
 
-        x is a list of votes to add, acc is a list of votes already being
-        asked"""
+        x:      list of votes to add
+        acc:    list of votes already being asked
+        """
         # NOTE: compute locally for a question since worker skill known
 
         accgain = 0
@@ -1215,8 +1347,13 @@ class Controller():
 
     def update_and_score(self, votes, vote_alts=None,
                          votes_assigned=None, timing=None):
-                         
+
         self.update_posteriors(votes)
+        
+        # Hack -- shouldn't really be here
+        if votes:
+            q_back = set(q for w,q in votes)
+            self.set_bins(q_back)
 
         n_observed = len(self.get_votes('observed'))
         accuracy, exp_accuracy = self.score()

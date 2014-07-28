@@ -13,6 +13,11 @@
 
 "policies":
 [
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
 {"name": "Random",
  "type": "random",
  "known_d": "True",
@@ -30,11 +35,6 @@
 },
 {"name": "Greedy",
  "type": "greedy",
- "known_d": "True",
- "known_s": "True"
-},
-{"name": "Greedy reverse",
- "type": "greedy_reverse",
  "known_d": "True",
  "known_s": "True"
 },
