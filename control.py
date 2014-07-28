@@ -30,8 +30,7 @@ class Controller():
                  platform,
                  num_questions, num_workers,
                  sample=True,
-                 max_rounds=float('inf'),
-                 num_bins=10):
+                 max_rounds=float('inf')):
 
         # parse policy and set defaults
         # method can be 'random', 'rr', 'greedy', 'greedy_reverse"
@@ -50,6 +49,10 @@ class Controller():
         self.policy['efficient'] = bool(pyphd.dict_val_or(policy,
                                                           'efficient',
                                                           False))
+        self.policy['num_bins'] = pyphd.dict_val_or(policy,
+                                                   'num_bins',
+                                                   10)
+        num_bins = self.policy['num_bins']
 
 
         self.platform = platform

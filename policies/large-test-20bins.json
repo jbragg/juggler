@@ -1,0 +1,29 @@
+{
+"name": "large",
+"n_workers": "100",
+"n_questions": "2000",
+"sample": "False",
+"max_rounds": 500,
+"n_exps": "100",
+
+"votes": "",
+"labels": "",
+"diff": {"type": "beta",
+         "params": [1,1]},
+"skill": {"mean": "0.7936",
+          "std": "0.2861"},
+"time": "0",
+
+"policies":
+[
+{"name": "Greedy reverse dup1 efficient",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1,
+ "efficient": 1,
+ "num_bins": 20
+}
+
+]
+}
