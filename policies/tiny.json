@@ -1,0 +1,58 @@
+{
+"n_workers": "4",
+"n_questions": "10",
+"sample": "True",
+"n_exps": "10",
+
+"skill": {"mean": "0.7936",
+          "std": "0.2"},
+"diff": {"type": "beta",
+         "params": ["1","1"]},
+"time": "0",
+
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin match",
+ "type": "rr_match",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy",
+ "type": "greedy",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain",
+ "type": "accgain",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain reverse",
+ "type": "accgain_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Uncertainty",
+ "type": "uncertainty",
+ "known_d": "True",
+ "known_s": "True"
+}
+
+]
+}

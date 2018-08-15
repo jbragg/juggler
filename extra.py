@@ -43,6 +43,7 @@ class PlotController():
     def get_bin_values(self, method):
         values = defaultdict(list)
         for w in xrange(self.num_workers):
+            print 'worker {}'.format(w)
             for q in xrange(self.num_questions):
                 if method=='entropy':
                     v = self.ent_gain([], (w,q))

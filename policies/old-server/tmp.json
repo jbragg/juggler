@@ -1,0 +1,43 @@
+{
+"n_workers": "12",
+"n_questions": "198",
+"sample": "True",
+"n_exps": "100",
+
+"votes": "",
+"labels": "gold",
+"diff": "gold",
+"skill": "gold",
+"time": "0",
+
+"policies":
+[
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin match",
+ "type": "rr_match",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain",
+ "type": "accgain",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain reverse",
+ "type": "accgain_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Uncertainty",
+ "type": "uncertainty",
+ "known_d": "True",
+ "known_s": "True"
+}
+
+
+]
+}

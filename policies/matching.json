@@ -1,0 +1,41 @@
+{
+"name": "rounds: 12w198q, matching",
+"n_workers": "12",
+"n_questions": "198",
+"sample": "False",
+"n_exps": "100",
+
+"votes": "",
+"labels": "",
+"diff": {"type": "beta",
+         "params": [1,1]},
+"skill": {"mean": "0.7936",
+          "std": "0.2861"},
+"time": "0",
+
+"policies":
+[
+{"name": "Matching",
+ "type": "greedy_matching",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Greedy reverse dup1",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 1
+}
+
+]
+}

@@ -1,13 +1,12 @@
 {
-"name": "large",
+"name": "rounds: 100w198q, real-0-sim",
 "n_workers": "100",
-"n_questions": "2000",
+"n_questions": "198",
 "sample": "False",
-"max_rounds": 500,
 "n_exps": "100",
 
 "votes": "",
-"labels": "",
+"labels": "gold",
 "diff": {"type": "beta",
          "params": [1,1]},
 "skill": {"mean": "0.7936",
@@ -16,32 +15,34 @@
 
 "policies":
 [
-{"name": "Greedy reverse (20 bins)",
- "type": "greedy_reverse",
+{"name": "Random",
+ "type": "random",
  "known_d": "True",
- "known_s": "True",
- "max_dup": 1,
- "efficient": 1,
- "num_bins": 20
+ "known_s": "True"
 },
-{"name": "Greedy reverse (40 bins)",
- "type": "greedy_reverse",
+{"name": "Round robin",
+ "type": "rr",
  "known_d": "True",
- "known_s": "True",
- "max_dup": 1,
- "efficient": 1,
- "num_bins": 40
+ "known_s": "True"
 },
-{"name": "Greedy reverse (80 bins)",
+{"name": "Greedy reverse dup1",
  "type": "greedy_reverse",
  "known_d": "True",
  "known_s": "True",
- "max_dup": 1,
- "efficient": 1,
- "num_bins": 80
+ "max_dup": 1
+},
+{"name": "Greedy reverse dup2",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 2
+},
+{"name": "Greedy dup3",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True",
+ "max_dup": 3
 }
-
-
 
 ]
 }

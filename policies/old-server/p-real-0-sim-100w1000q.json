@@ -1,0 +1,49 @@
+{
+"n_workers": "100",
+"n_questions": "1000",
+"sample": "True",
+"n_exps": "100",
+
+"votes": "",
+"skill":{"mean": "0.7936",
+         "std": "0.2861"},
+"diff":{"type": "beta",
+        "params": [1,1]},
+"time": "0",
+
+
+"policies":
+[
+{"name": "Greedy reverse",
+ "type": "greedy_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Random",
+ "type": "random",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Round robin",
+ "type": "rr",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain",
+ "type": "accgain",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Accgain reverse",
+ "type": "accgain_reverse",
+ "known_d": "True",
+ "known_s": "True"
+},
+{"name": "Uncertainty reverse",
+ "type": "uncertainty_reverse",
+ "known_d": "True",
+ "known_s": "True"
+}
+
+]
+}

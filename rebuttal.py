@@ -65,6 +65,7 @@ def analyze_significance(hist_fname, frac=0.95):
     #---------- different part -------
 
     against = 'Round robin'
+#    against = 'Random'
     compare = ['Greedy reverse','Accgain reverse','Uncertainty reverse']
     def find_first(lst, f):
         first_index, first_value = [(i,v) for i,v in enumerate(lst) if f(v)][0]
@@ -107,7 +108,10 @@ def count_duplicates(hist_fname):
 
 
 if __name__ == '__main__':
-    exps = ['p-real-0-subsample','p-real-0-sim']#,'p-sim-gold-params']
+#    exps = ['p-real-0-subsample','p-real-0-sim']#,'p-sim-gold-params']
+#    exps = ['p-real-0-sim']#,'p-sim-gold-params']
+#    exps = ['backup/p-sim-gold-params']#,'p-sim-gold-params']
+    exps = ['large-500rounds']#,'p-sim-gold-params']
     csv_files = ['res/{}/hist.csv'.format(s) for s in exps]
     fracs = [0.95, 0.97]
 
@@ -133,8 +137,13 @@ if __name__ == '__main__':
         print
         print '-----' + fname + '-----'
        
-        compare = [('Greedy reverse', 'Accgain reverse'),
-                   ('Greedy reverse', 'Uncertainty reverse')] 
+#        compare = [('Greedy reverse', 'Accgain reverse'),
+#                   ('Greedy reverse', 'Uncertainty reverse'), 
+#                   ('Accgain reverse', 'Uncertainty reverse')] 
+        compare = [('Greedy dup3', 'Greedy reverse dup1'),
+                   ('Greedy reverse dup1', 'Greedy reverse dup2'),
+                   ('Greedy reverse dup2', 'Greedy dup3')]
+
         for p1, p2 in compare:
 
             for f in fracs:

@@ -234,6 +234,34 @@ def load_tables(expname):
 
     return res, runinfo
 
+def write_hist(res, out_path):
+    """ Writes old-style hist from res
+
+        output cols:
+        policy,run,observed,time,accuracy,exp_accuracy,duplicates,timing
+    """
+    out = []
+    fieldnames = ['policy','run','observed','time','accuracy','exp_accuracy','duplicates','timing']
+    for p in res:
+        for i,lst in enumerate(res[p]):
+            for e in lst:
+                out.append({'policy': p,
+                          'run': i,
+                          'observed': e['observed'],
+                          'time': e['time'],
+                          'accuracy': e['accuracy'],
+                          'exp_accuracy': e['exp_accuracy'],
+                          'duplicates': e['workers_per_task'],
+                          'timing': e['timing']})
+                        
+        
+    with open(out_path, 'w') as f:
+        writer = csv.DictWriter(f, fieldnames)
+        writer.writeheader()
+        for d in out:
+            writer.writerow(d)
+        
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
